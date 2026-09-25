@@ -225,5 +225,5 @@ FORUM = {
     'BAN_DAYS': (1, 7, 30, 365),  # seçilebilen engel süreleri (gün); kalıcı engel yok, sahte hesap kapatılır
     'MOD_PER_PAGE': 50,  # moderasyon kaydı ve şikayet kuyruğu
     'REPORT_RATE': (10, 60),  # hız sınırı: 60 dakikada en fazla 10 şikayet
-    'FOUNDING': True,  # kural 9: kuruluş sürüyor; False olunca admin'den konu eklenemez, rol salt okunur
+    'FOUNDING': True,  # kural 9: kuruluş sürüyor; False olunca admin'den konu eklenemez, rol ve yönetici salt okunur
 }

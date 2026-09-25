@@ -24,5 +24,6 @@ class UserAdmin(BaseUserAdmin):
     readonly_fields = ('is_active', 'banned_until', 'terms_accepted_at', 'deleted_at')
 
     def get_readonly_fields(self, request, obj=None):
-        # Kuruluştan sonra B statüsü yalnızca oylamayla değişir (kural 2, ExpertProposal).
-        return self.readonly_fields + (() if settings.FORUM['FOUNDING'] else ('role',))
+        # Kuruluştan sonra B statüsü yalnızca oylamayla değişir (kural 2, ExpertProposal); yönetici ataması da
+        # kapanır (yöntemi açık nokta). Yöneticiler moderasyon kaydı sayfasında herkese açık listelenir.
+        return self.readonly_fields + (() if settings.FORUM['FOUNDING'] else ('role', 'is_moderator'))

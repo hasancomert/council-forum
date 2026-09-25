@@ -2,6 +2,9 @@
 {% block content %}
 <h1>Moderasyon kaydı</h1>
 <p>Yöneticilerin bütün işlemleri burada; kayıt değiştirilemez ve silinemez. Gizlenen içeriğin metni gösterilmez.</p>
+<p>Yöneticiler:
+  {% for m in moderators %}<a href="{% url 'mod_log' %}?user={{ m.username|urlencode }}">{{ m }}</a>{% if not forloop.last %}, {% endif %}
+  {% empty %}henüz yok{% endfor %}</p>
 <form method="get" class="filters">
   <select name="kind" aria-label="işlem"><option value="">tüm işlemler</option>
     {% for v, label in kinds %}<option value="{{ v }}"{% if request.GET.kind == v %} selected{% endif %}>{{ label }}</option>{% endfor %}

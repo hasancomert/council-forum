@@ -165,4 +165,5 @@ def log(request):
     return render(request, 'moderation/log.html', {
         'page': Paginator(qs, settings.FORUM['MOD_PER_PAGE']).get_page(g.get('page')),
         'kinds': Kind.choices, 'reasons': ModAction.Reason.choices, 'title': 'Moderasyon kaydı',
+        'moderators': User.objects.filter(is_moderator=True, is_active=True).order_by('username'),  # şeffaflık
     })

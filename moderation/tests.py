@@ -204,6 +204,12 @@ class ActionTests(ModTestCase):
         fake.refresh_from_db()
         self.assertTrue(fake.is_active)
 
+    def test_log_lists_moderators(self):
+        User.objects.filter(pk=self.bob.pk).update(is_active=False, is_moderator=True)  # kapalı hesap listelenmez
+        r = self.client.get('/mod/log/')
+        self.assertEqual(list(r.context['moderators']), [self.mod])
+        self.assertContains(r, f'?user={self.mod.username}">{self.mod.username}</a>')
+
     def test_log_is_append_only_public_and_filterable(self):
         c = Comment.objects.create(target=self.topic, author=self.alice, body='Çok gizli söz')
         self.login(self.mod)
@@ -298,4 +304,6 @@ class AdminTests(ModTestCase):
         self.assertEqual(self.client.get('/admin/topics/topic/add/').status_code, 200)
         with override_settings(FORUM={**settings.FORUM, 'FOUNDING': False}):  # kural 9: kuruluş bitti
             self.assertEqual(self.client.get('/admin/topics/topic/add/').status_code, 403)
-            self.assertNotContains(self.client.get(user_page), 'name="role"')
+            r = self.client.get(user_page)
+            for field in ('role', 'is_moderator'):  # B statüsü oylamayla; yönetici ataması kuruluşla kapanır
+                self.assertNotContains(r, f'name="{field}"')
