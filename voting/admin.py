@@ -10,7 +10,7 @@ class ProposalAdmin(admin.ModelAdmin):
     # Test amaçlı: tüm öneri tipleri aynı admin sınıfını paylaşır (ortak alanlar yeter).
     list_display = ('__str__', 'proposer', 'status', 'created_at', 'voting_ends_at', 'participant_count')
     list_filter = ('status',)
-    readonly_fields = ('proposer', 'created_at', 'status', 'applied_at')
+    readonly_fields = ('proposer', 'created_at', 'status', 'quorum', 'applied_at')
 
     def save_model(self, request, obj, form, change):
         if not change:

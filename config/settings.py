@@ -143,6 +143,7 @@ TURNSTILE_SECRET_KEY = '1x0000000000000000000000000000000AA'
 FORUM = {
     'VOTE_WEIGHT': {'A': 1, 'B': 10},  # kural 2: rol -> karar oylamasındaki ağırlık
     'MIN_ACCOUNT_AGE_DAYS': 7,  # kural 1: oy hakkı için hesap yaşı
+    'ACTIVE_DAYS': 30,  # kural 3: aktif üye penceresi
     'QUORUM_PERCENT': 10,  # kural 3: son 30 günde aktif üyelerin %10'u
     'QUORUM_MIN': 5,  # kural 3: en az 5 kişi
     'EXPERT_APPROVAL_NUM': 2,  # kural 2: B statüsü başvurusu 2/3 evet gerekir
