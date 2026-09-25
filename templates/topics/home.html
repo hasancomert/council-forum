@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Konular</h1>
+<nav class="tabs">
+  {% for key, label in tabs.items %}
+    <a href="{% querystring tab=key sort=None page=None %}"{% if key == tab %} aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+<p>Sırala:
+  {% for key, label in sorts.items %}{% if not forloop.first %} · {% endif %}
+    {% if key == sort %}<strong>{{ label }}</strong>{% else %}<a href="{% querystring sort=key page=None %}">{{ label }}</a>{% endif %}
+  {% endfor %}
+</p>
+<ul class="topics">
+  {% for t in page %}
+    {% include "topics/_row.html" %}
+  {% empty %}
+    <li>Bu sekmede konu yok.</li>
+  {% endfor %}
+</ul>
+{% include "_pages.html" %}
+<p>
+  {% if user.is_authenticated %}<a href="{% url 'proposal_new' 'open' %}">Yeni ana konu öner</a> · {% endif %}
+  <a href="{% url 'proposals' %}">Açık öneriler</a> · <a href="{% url 'archive' %}">Arşiv</a>
+</p>
+{% endblock %}

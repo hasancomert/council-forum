@@ -155,4 +155,7 @@ FORUM = {
     'MAX_OPEN_PROPOSALS': 3,  # kural 8: kişi başı en fazla açık öneri
     'REJECTED_COOLDOWN_DAYS': 30,  # kural 8: reddedilen öneri bu kadar gün yeniden açılamaz
     'COMMENT_MAX_LENGTH': 5000,  # yorum uzunluk sınırı; değişirse makemigrations (yalnızca form denetimi değişir)
+    'POPULAR_DAYS': 7,  # "en popüler": son kaç günün etkinliği
+    'POPULAR_WEIGHTS': {'comment': 3, 'vote': 1},  # yorum ve oy (yorum oyu + konu oyu) katsayıları
+    'TOPICS_PER_PAGE': 20,  # konu listeleri
 }
