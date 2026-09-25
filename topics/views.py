@@ -1,11 +1,11 @@
 from django.conf import settings
-from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Count, OuterRef, Q
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_POST
 
+from comments.views import updown
 from config.utils import back
 
 from .models import SORTS, Topic, TopicVote, count_of
@@ -73,8 +73,4 @@ def detail(request, pk):
 @require_POST
 def vote(request, pk):
     topic = get_object_or_404(Topic, pk=pk)
-    try:
-        TopicVote.cast(topic, request.user, {'1': 1, '-1': -1}.get(request.POST.get('value'), 0))
-    except ValueError as e:
-        messages.error(request, str(e))
-    return redirect(back(request, topic.get_absolute_url()))  # yorumların hangi sayfasındaysa oraya
+    return updown(request, TopicVote, topic, back(request, topic.get_absolute_url()))  # yorumların hangi sayfasındaysa oraya

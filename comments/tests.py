@@ -4,7 +4,7 @@ from urllib.parse import quote
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.template import Context, Template
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import Client, RequestFactory, TestCase, override_settings
 from django.utils import timezone
 
 from accounts.models import User
@@ -215,6 +215,36 @@ class VoteTests(CommentTestCase):
             html = template.render(Context({'request': request, 'target': self.topic}))
         self.assertEqual(html.count('class="comment"'), 5)
         self.assertEqual(html.count('class="comment reply"'), 15)
+
+
+class JsonVoteTests(CommentTestCase):
+    """vote.js'in uçları: Accept: application/json ile JSON döner. JS'siz form yukarıdaki gibi yönlendirir."""
+    JSON = {'HTTP_ACCEPT': 'application/json'}
+
+    def test_comment_and_topic_votes_return_json(self):
+        c = self.comment()
+        self.client.force_login(self.bob)
+        for url in (f'/comments/{c.pk}/vote/', f'/topics/{self.topic.pk}/vote/'):
+            with self.subTest(url=url):
+                for value, expected in (('1', 1), ('-1', -1), ('-1', 0)):  # ikinci ▼ oyu geri alır
+                    r = self.client.post(url, {'value': value}, **self.JSON)
+                    self.assertEqual(r.json(), {'score': expected, 'mine': expected})
+
+    def test_error_is_json_without_flash_message(self):
+        c = self.comment()
+        self.client.force_login(self.alice)  # kendi yorumu
+        r = self.client.post(f'/comments/{c.pk}/vote/', {'value': '1'}, **self.JSON)
+        self.assertEqual((r.status_code, r.json()), (400, {'error': 'Buna oy verilemez.'}))
+        self.assertNotContains(self.client.get(self.topic.get_absolute_url()), 'oy verilemez')  # sonraki sayfaya taşınmaz
+
+    def test_csrf_required(self):
+        url = f'/comments/{self.comment().pk}/vote/'
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.bob)
+        self.assertEqual(client.post(url, {'value': '1'}, **self.JSON).status_code, 403)
+        client.get(self.topic.get_absolute_url())  # sayfa csrftoken çerezini verir; vote.js jetonu formdan alır
+        r = client.post(url, {'value': '1', 'csrfmiddlewaretoken': client.cookies['csrftoken'].value}, **self.JSON)
+        self.assertEqual(r.json()['score'], 1)
 
 
 class BanAndRateTests(CommentTestCase):

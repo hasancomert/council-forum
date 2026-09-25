@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -9,6 +10,25 @@ from config.utils import back, get_target, over_limit
 
 from .forms import CommentForm
 from .models import Comment, Commentable, CommentVote
+
+
+def updown(request, model, target, url):
+    """▲/▼ oyu (yorum ve konu, model: CommentVote ya da TopicVote). vote.js'in fetch'i Accept: application/json
+    gönderir: yanıt {score, mine} ya da hata 400 {error}. JS yoksa tarayıcı text/html ister: bugünkü gibi
+    mesaj + url'e yönlendirme.
+    """
+    as_json = request.get_preferred_type(['text/html', 'application/json']) == 'application/json'
+    try:
+        mine = model.cast(target, request.user, {'1': 1, '-1': -1}.get(request.POST.get('value'), 0))
+    except ValueError as e:
+        if as_json:
+            return JsonResponse({'error': str(e)}, status=400)
+        messages.error(request, str(e))
+        return redirect(url)
+    if as_json:
+        target.refresh_from_db(fields=['score'])  # cast() puanı veritabanında F() ile değiştirdi
+        return JsonResponse({'score': target.score, 'mine': mine})
+    return redirect(url)
 
 
 def _back(request, comment):
@@ -58,11 +78,7 @@ def edit(request, pk):
 @require_POST
 def vote(request, pk):
     comment = get_object_or_404(Comment, pk=pk)
-    try:
-        CommentVote.cast(comment, request.user, {'1': 1, '-1': -1}.get(request.POST.get('value'), 0))
-    except ValueError as e:
-        messages.error(request, str(e))
-    return redirect(_back(request, comment))
+    return updown(request, CommentVote, comment, _back(request, comment))
 
 
 @login_required
