@@ -2,13 +2,18 @@
 {% load voting %}
 {% block aside %}{% active_panel %}{% endblock %}
 {% block content %}
-{% if parent %}
-  <h1><a href="{{ parent.get_absolute_url }}">{{ parent }}</a> alt konuları
-    <a class="button" href="{% querystring parent=None page=None %}" title="Süzgeci kaldır" aria-label="Süzgeci kaldır">✕</a></h1>
-{% else %}
-  <h1>Konular</h1>
-  <p class="lead">Burada kararları üyeler verir: konu açmak, düzenlemek ve kapatmak oylamayla olur.</p>
-{% endif %}
+{# öneri düğmesi başlığın yanında: liste uzasa da hep görünür (giriş yoksa giriş sayfasına götürür) #}
+<div class="head">
+  {% if parent %}
+    <h1><a href="{{ parent.get_absolute_url }}">{{ parent }}</a> alt konuları
+      <a class="button" href="{% querystring parent=None page=None %}" title="Süzgeci kaldır" aria-label="Süzgeci kaldır">✕</a></h1>
+    <a class="button primary" href="{% url 'proposal_new' 'open' parent.pk %}">Alt konu öner</a>
+  {% else %}
+    <h1>Konular</h1>
+    <a class="button primary" href="{% url 'proposal_new' 'open' %}">Yeni ana konu öner</a>
+  {% endif %}
+</div>
+{% if not parent %}<p class="lead">Burada kararları üyeler verir: konu açmak, düzenlemek ve kapatmak oylamayla olur.</p>{% endif %}
 <nav class="tabs" aria-label="Sekmeler">
   {% for key, label in tabs.items %}
     <a href="{% querystring tab=key sort=None page=None %}"{% if key == tab %} aria-current="page"{% endif %}>{{ label }}</a>
@@ -27,8 +32,4 @@
   {% endfor %}
 </ul>
 {% include "_pages.html" %}
-<p class="links">
-  {% if user.is_authenticated %}<a class="button primary" href="{% url 'proposal_new' 'open' %}">Yeni ana konu öner</a>{% endif %}
-  <a href="{% url 'proposals' %}">Açık öneriler</a> <a href="{% url 'archive' %}">Silinen konular</a>
-</p>
 {% endblock %}

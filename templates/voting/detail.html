@@ -37,7 +37,7 @@
   {% if proposal.status == "accepted" %}<p class="notice">Hedefin şu anki durumu uygun olmadığı için henüz uygulanamadı.</p>{% endif %}
 {% else %}
   {% if proposal.in_discussion %}<p>Tartışma sürüyor; oylama {{ proposal.discussion_ends_at|date:"j F Y H:i" }} tarihinde başlar.</p>{% endif %}
-  <p>Bitiş: {{ proposal.voting_ends_at|date:"j F Y H:i" }} ({{ proposal.voting_ends_at|timeuntil }} kaldı). Katılım: {{ proposal.participant_count }}. Sonuç oylama bitince açıklanır.</p>
+  <p>Bitiş: {{ proposal.voting_ends_at|date:"j F Y H:i" }} ({{ proposal.voting_ends_at|left }} kaldı). Katılım: {{ proposal.participant_count }}. Sonuç oylama bitince açıklanır.</p>
   {% if not user.is_authenticated %}
     <p><a href="{% url 'login' %}?next={{ request.path|urlencode }}">Giriş yap</a>, oy ver.</p>
   {% else %}

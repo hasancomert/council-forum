@@ -85,6 +85,8 @@ a:hover { text-decoration-thickness: 2px; }
 img, svg { max-width: 100%; }
 small, .muted { color: var(--muted); font-size: var(--fs-sm); }
 .lead { margin-top: calc(-1 * var(--s2)); color: var(--muted); }
+.head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s3); margin-bottom: var(--s3); }
+.head h1 { margin: 0; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 
 /* Dokunma alanı: görünen boyut küçük olsa da görünmez ::after kenarlardan taşar, hedef en az 44px olur */

@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.staticfiles import finders
@@ -11,11 +12,13 @@ from django.core.management.utils import get_random_secret_key
 from django.template import Context, Template
 from django.template.loader import render_to_string
 from django.test import Client, SimpleTestCase, TestCase
+from django.utils import timezone
 
 from accounts.models import User
 from topics.models import Topic
 
 from .settings import BASE_DIR, database, env_list, load_env
+from .templatetags import ago, left, span
 
 # Yayın ortamı: .env'deki geliştirme değerleri (DEBUG=1) bunları ezemez, gerçek ortam değişkeni önceliklidir.
 PROD = {'DEBUG': '0', 'SECRET_KEY': get_random_secret_key(), 'ALLOWED_HOSTS': 'forum.example',
@@ -79,6 +82,16 @@ class PageTests(TestCase):
 class TemplateFilterTests(SimpleTestCase):
     def test_turkish_capfirst_overrides_builtin(self):
         self.assertEqual(Template('{{ "istek"|capfirst }} {{ "ılık"|capfirst }}').render(Context()), 'İstek Ilık')
+
+    def test_short_durations(self):
+        h, d = 3600, 86400
+        cases = {14 * 60: '14 dk', h + 14 * 60: '1 sa 14 dk', 2 * h: '2 sa', 3 * h + 300: '3 sa', 23 * h: '23 sa',
+                 d: '1 gün', 30 * h: '1 gün 6 sa', 48 * h: '2 gün', 29 * d: '29 gün', 30 * d: '1 ay',
+                 300 * d: '10 ay', 3 * 365 * d + 200 * d: '3 yıl'}
+        self.assertEqual({s: span(s) for s in cases}, cases)
+        now = timezone.now()
+        self.assertEqual((ago(now), ago(now - timedelta(hours=5)), left(now + timedelta(days=1, hours=22, seconds=30))),
+                         ('az önce', '5 sa önce', '1 gün 22 sa'))
 
 
 class PwaTests(TestCase):

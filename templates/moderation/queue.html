@@ -5,7 +5,7 @@
 <ul class="list">
   {% for i in items %}
     <li>
-      <strong>{{ i.n }} şikayet</strong> · {{ i.since|timesince }} önce
+      <strong>{{ i.n }} şikayet</strong> · {{ i.since|ago }}
       {% if i.target %}
         · {{ i.kind|capfirst }}: {{ i.target }} · {{ i.target.owner|default:"silinmiş üye" }}
         <br><a href="{% url 'goto' i.content_type i.object_id %}">Sayfası</a>
