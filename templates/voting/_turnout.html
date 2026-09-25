@@ -1,0 +1,7 @@
+{% comment %} Katılım çubuğu: yeter sayıya ne kadar kaldığı (kural 3). Kural 6 gereği evet/hayır değil, yalnızca katılım.
+   n: katılım, quorum: şu anki yeter sayı (sonuçlanma anında yeniden hesaplanır), ends: isteğe bağlı bitiş.
+   <progress>: satır içi stil yok (CSP). {% endcomment %}
+<div class="turnout{% if n >= quorum %} met{% endif %}" title="Yeter sayı: oylamanın geçerli olması için gereken en az katılım">
+  <progress max="{{ quorum }}" value="{{ n }}" aria-label="Yeter sayıya ilerleme">{{ n }}/{{ quorum }}</progress>
+  <small>{{ n }}/{{ quorum }} katılım{% if n >= quorum %} · yeter sayı tamam{% endif %}{% if ends %} · {{ ends|left }} kaldı{% endif %}</small>
+</div>

@@ -7,7 +7,7 @@ from django.views.decorators.http import require_POST
 from topics.models import Topic
 
 from .forms import proposal_form
-from .models import PROPOSALS, TopicUndoProposal, Vote, active_proposals
+from .models import PROPOSALS, BaseProposal, TopicUndoProposal, Vote, active_proposals, required_quorum
 
 
 def _model(slug):
@@ -18,7 +18,8 @@ def _model(slug):
 
 def proposal_list(request):  # ana sayfa panelinin "tümü" sayfası
     proposals = sorted(active_proposals(), key=lambda p: p.voting_ends_at)
-    return render(request, 'voting/list.html', {'proposals': proposals, 'title': 'Açık öneriler'})
+    return render(request, 'voting/list.html', {'proposals': proposals, 'quorum': required_quorum(),
+                                                'title': 'Açık öneriler'})
 
 
 def detail(request, slug, pk):
@@ -30,6 +31,7 @@ def detail(request, slug, pk):
         'title': 'Moderasyonla gizlendi' if masked else str(proposal),
         'my_vote': request.user.is_authenticated and proposal.votes.filter(voter=request.user).first(),
         'tally': proposal.results_visible and proposal.tally(),  # kural 6: sonuç bitince açıklanır
+        'quorum': proposal.status == BaseProposal.Status.VOTING and required_quorum(),  # katılım çubuğu
     })
 
 

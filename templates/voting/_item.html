@@ -1,0 +1,6 @@
+{% comment %} Açık öneri (panel ve açık öneriler sayfası). p: active_proposals()'tan (participants, deadline);
+quorum: yeter sayı. p.voted yalnızca panelde, oy hakkı olan kullanıcı için hesaplanır. {% endcomment %}
+<span class="badge">{{ p.kind|capfirst }}</span>
+<a class="ptitle" href="{{ p.get_absolute_url }}">{{ p }}{% if p.voted is False %} <span class="badge todo">Oy ver</span>{% endif %}</a>
+{% if p.in_discussion %}<small>Oylamaya {{ p.deadline|left }} kaldı</small>
+{% else %}{% include "voting/_turnout.html" with n=p.participants ends=p.deadline %}{% endif %}

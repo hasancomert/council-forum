@@ -456,7 +456,8 @@ PROPOSAL_MODELS = (
 PROPOSALS = {model.SLUG: model for model in PROPOSAL_MODELS}
 
 
-PANEL_CACHE_KEY = 'active_panel'  # panelin ortak kısmı; moderasyon işlemleri temizler
+PANEL_CACHE_KEY = 'active_panel:2'  # panelin ortak kısmı; moderasyon temizler. Biçimi değişince sürüm artar:
+# önbellek veritabanında, güncellemeden sonra eski biçimli kayıt okunmasın
 
 
 def withdraw_running(user):

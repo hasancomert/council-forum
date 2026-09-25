@@ -387,9 +387,18 @@ details form textarea { flex-basis: 100%; }
 .panel ul { margin: 0 0 var(--s2); padding: 0; list-style: none; }
 .panel li { padding: var(--s2) 0; border-bottom: 1px solid var(--line); }
 .panel li:last-child { border-bottom: 0; }
-.panel li a { font-weight: 600; text-decoration: none; }
-.panel li a:hover { text-decoration: underline; }
-.dot { color: var(--accent); }
+/* Açık öneri: tür rozeti, başlık, katılım çubuğu ve kalan süre */
+.ptitle { display: block; margin: .25rem 0 .1rem; font-weight: 600; text-decoration: none; }
+.ptitle:hover { text-decoration: underline; }
+.badge.todo { background: var(--accent); color: var(--accent-text); }
+.turnout { display: grid; gap: .15rem; margin-top: .4rem; max-width: 24rem; }
+.turnout.met small { color: var(--ok); font-weight: 700; }
+progress { width: 100%; height: .45rem; border: 0; border-radius: 99px; background: var(--muted-soft); overflow: hidden; appearance: none; }
+progress::-webkit-progress-bar { border-radius: 99px; background: var(--muted-soft); }
+progress::-webkit-progress-value { border-radius: 99px; background: var(--accent); }
+progress::-moz-progress-bar { border-radius: 99px; background: var(--accent); }
+.turnout.met progress::-webkit-progress-value { background: var(--ok); }
+.turnout.met progress::-moz-progress-bar { background: var(--ok); }
 
 /* Listeler: öneriler, moderasyon kaydı, şikayetler, arşiv */
 .list { margin: 0 0 var(--s3); padding: 0; list-style: none; }

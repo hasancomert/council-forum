@@ -1,22 +1,12 @@
-{# Aktif oylamalar paneli ({% active_panel %}). Kural 6: oylama sürerken yalnızca katılım sayısı görünür. #}
+{# Aktif oylamalar paneli ({% active_panel %}). Kural 6: oylama sürerken yalnızca katılım görünür. #}
 <section class="panel" aria-labelledby="panel-oylamada">
   <h2 id="panel-oylamada">Oylamada</h2>
   <ul>
-    {% for p in voting %}
-      <li><a href="{{ p.get_absolute_url }}">{{ p }}</a>{% if p.voted is False %} <span class="dot" role="img" aria-label="Henüz oy vermedin" title="Henüz oy vermedin">●</span>{% endif %}
-        <br><small>{{ p.kind|capfirst }} · {{ p.participants }} katılım · {{ p.deadline|left }} kaldı</small></li>
-    {% empty %}
-      <li>Süren oylama yok.</li>
-    {% endfor %}
+    {% for p in voting %}<li>{% include "voting/_item.html" %}</li>{% empty %}<li>Süren oylama yok.</li>{% endfor %}
   </ul>
   {% if talk %}
     <h2>Tartışmada</h2>
-    <ul>
-      {% for p in talk %}
-        <li><a href="{{ p.get_absolute_url }}">{{ p }}</a>
-          <br><small>{{ p.kind|capfirst }} · oylamaya {{ p.deadline|left }} kaldı</small></li>
-      {% endfor %}
-    </ul>
+    <ul>{% for p in talk %}<li>{% include "voting/_item.html" %}</li>{% endfor %}</ul>
   {% endif %}
   {% if more %}<p><a class="chip" href="{% url 'proposals' %}">Tümü ({{ total }}) →</a></p>{% endif %}
 </section>

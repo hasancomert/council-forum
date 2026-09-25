@@ -12,7 +12,7 @@ from topics.models import Topic
 
 from .models import (
     BaseProposal, ExpertProposal, RequestProposal, TopicCloseProposal, TopicEditProposal,
-    TopicOpenProposal, TopicUndoProposal, Vote, open_proposal_count,
+    TopicOpenProposal, TopicUndoProposal, Vote, open_proposal_count, required_quorum,
 )
 
 S = BaseProposal.Status
@@ -173,7 +173,7 @@ class PageTests(VotingTestCase):
         p = TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic)
         self.vote(p, yes=self.voters[:3], no=self.voters[3:])
         r = self.client.get(p.get_absolute_url())
-        self.assertContains(r, 'Katılım: 5')
+        self.assertContains(r, '5/5 katılım · yeter sayı tamam')  # kural 3: yeter sayı en az 5
         self.assertNotContains(r, 'Evet 3')
         TopicCloseProposal.objects.filter(pk=p.pk).update(voting_ends_at=timezone.now())
         r = self.client.get(p.get_absolute_url())  # sayfa ziyareti sonuçlandırır
@@ -232,7 +232,8 @@ class PanelTests(VotingTestCase):
         self.assertLess(panel.index(str(soon)), panel.index(str(late)))  # bitişi yakın önce
         self.assertLess(panel.index(str(late)), panel.index('Tartışmada'))
         self.assertLess(panel.index('Tartışmada'), panel.index('İstek'))  # tartışmadaki istek yalnızca orada
-        self.assertIn('1 katılım', panel)  # kural 6: sonuç değil, yalnızca katılım
+        self.assertIn(f'1/{required_quorum()} katılım', panel)  # kural 6: sonuç değil, yalnızca katılım
+        self.assertNotIn('Evet', panel)
         self.assertNotIn('Bitti', panel)
         RequestProposal.objects.filter(pk=r.pk).update(discussion_ends_at=now)  # oylama evresine geçti
         cache.clear()
@@ -249,13 +250,13 @@ class PanelTests(VotingTestCase):
 
     def test_unvoted_marker(self):
         p = TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic)
-        self.assertNotIn('●', self.panel())  # giriş yok
+        self.assertNotIn('Oy ver', self.panel())  # giriş yok
         self.client.force_login(make_user('yeni', days=1))
-        self.assertNotIn('●', self.panel())  # oy hakkı yok
+        self.assertNotIn('Oy ver', self.panel())  # oy hakkı yok
         self.client.force_login(self.voters[0])
-        self.assertIn('●', self.panel())
+        self.assertIn('Oy ver', self.panel())
         Vote.cast(proposal=p, voter=self.voters[0], choice=YES)
-        self.assertNotIn('●', self.panel())  # ortak kısım önbellekte, işaret yine de güncel
+        self.assertNotIn('Oy ver', self.panel())  # ortak kısım önbellekte, işaret yine de güncel
 
 
 class FormTests(VotingTestCase):
