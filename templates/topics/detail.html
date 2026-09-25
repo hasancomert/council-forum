@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load comments voting %}
+{% load comments moderation voting %}
 {% block aside %}{% active_panel %}{% endblock %}
 {% block content %}
 {% if topic.parent %}<p><a href="{{ topic.parent.get_absolute_url }}">← {{ topic.parent }}</a></p>{% endif %}
@@ -7,7 +7,7 @@
 <div>
   {% if votable %}{% url 'topic_vote' topic.pk as url %}{% include "_vote.html" with score=topic.score mine=my_vote %}
   {% else %}puan {{ topic.score }}{% endif %}
-  · {{ topic.author|default:"silinmiş üye" }} · {{ topic.created_at }}
+  · {{ topic.author|default:"silinmiş üye" }} · {{ topic.created_at }} {% mod_links topic %}
 </div>
 {% if masked %}
   <p><em>Bu konu moderasyonla gizlendi.</em></p>

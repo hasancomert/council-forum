@@ -1,0 +1,9 @@
+{# Kayıt satırı (kayıt, içerik ve üye sayfaları). İçeriğin metni yok, yalnızca türü ve bağlantısı. #}
+<li>{{ a.created_at|date:"j F Y H:i" }} · <a href="{% url 'mod_log' %}?user={{ a.moderator.username|urlencode }}">{{ a.moderator }}</a>
+  · <strong>{{ a.get_kind_display }}</strong>
+  {% if a.content_type_id %}· <a href="{% url 'goto' a.content_type_id a.object_id %}">{{ a.content_type.name }}</a>{% endif %}
+  {% if a.user %}· üye: <a href="{% url 'mod_log' %}?user={{ a.user.username|urlencode }}">{{ a.user }}</a>{% endif %}
+  {% if a.until %}· {{ a.until|date:"j F Y H:i" }} tarihine kadar{% endif %}
+  · {{ a.get_reason_display }}
+  <br><small>{{ a.note }}</small>
+</li>

@@ -5,7 +5,7 @@ from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 
-from ..models import Vote, active_proposals
+from ..models import PANEL_CACHE_KEY, Vote, active_proposals
 
 register = template.Library()
 
@@ -23,7 +23,7 @@ def active_panel(context):
     """Aktif oylamalar paneli. Ortak kısım PANEL_CACHE_SECONDS saniye önbellekte (tip başına 1 sorgu yerine 0);
     önbellek kopya döndürdüğü için kişiye özel ● ona sızmaz.
     """
-    voting, talk, total = cache.get_or_set('active_panel', _panel, settings.FORUM['PANEL_CACHE_SECONDS'])
+    voting, talk, total = cache.get_or_set(PANEL_CACHE_KEY, _panel, settings.FORUM['PANEL_CACHE_SECONDS'])
     user = context['request'].user
     if voting and user.is_authenticated and user.can_vote:
         # ●: oy verilmemiş öneri, 1 sorgu. Açık öneriye verilen oy, önerinin açılışından sonradır; kullanıcının

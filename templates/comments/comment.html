@@ -1,3 +1,4 @@
+{% load moderation %}
 <article id="c{{ c.pk }}" class="comment{% if reply %} reply{% endif %}">
   {% if c.is_deleted %}
     <p><em>Bu yorum silindi.</em></p>
@@ -21,6 +22,7 @@
           </form>
         </details>
       {% endif %}
+      {% mod_links c %}
       {% if user == c.author %}
         {% if not c.frozen and can_post %}<a href="{% url 'comment_edit' c.pk %}?next={{ request.get_full_path|urlencode }}">Düzenle</a>{% endif %}
         <details><summary>Sil</summary>

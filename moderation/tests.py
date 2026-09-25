@@ -1,13 +1,27 @@
+from datetime import timedelta
+
+from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
+from django.db.models import ProtectedError
 from django.test import TestCase
 from django.utils import timezone
 
+from accounts.models import User
 from comments.models import Comment, CommentVote
-from topics.models import Topic
-from voting.models import BaseProposal, TopicCloseProposal, TopicOpenProposal, active_proposals, open_proposal_count
+from topics.models import Topic, TopicVote
+from voting.models import (
+    BaseProposal, TopicCloseProposal, TopicOpenProposal, Vote, active_proposals, open_proposal_count,
+)
 from voting.tests import make_user
 
+from .models import ModAction
+
 S = BaseProposal.Status
+NOTE = {'reason': 'troll', 'note': 'Kurala aykırı.'}
+
+
+def mod_url(obj):
+    return f'/mod/{ContentType.objects.get_for_model(obj).pk}/{obj.pk}/'
 
 
 def make_moderator(name='yonetici'):
@@ -98,3 +112,113 @@ class HidingTests(ModTestCase):
         p.refresh_from_db()
         p.set_hidden(True)
         self.assertEqual(p.status, S.REJECTED)  # bitmiş oylama iptal edilmez (burada yeter sayı yok)
+
+
+class ActionTests(ModTestCase):
+    def test_only_moderators(self):
+        c = Comment.objects.create(target=self.topic, author=self.alice, body='x')
+        url = mod_url(c)
+        self.assertRedirects(self.client.get(url), f'/accounts/login/?next={url}')
+        self.login(self.bob)
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(self.client.get(f'/mod/user/{self.alice.pk}/').status_code, 403)
+        self.login(self.mod)
+        self.assertEqual(self.client.get(mod_url(self.alice)).status_code, 404)  # yalnızca gizlenebilir içerik
+
+    def test_hide_needs_reason_and_note_and_is_logged(self):
+        c = Comment.objects.create(target=self.topic, author=self.alice, body='x')
+        self.login(self.mod)
+        for bad in ({'note': ''}, {'reason': 'other'}):  # not zorunlu, "diğer" gerekçe yok
+            self.assertEqual(self.client.post(mod_url(c), NOTE | bad).status_code, 200)
+        self.assertFalse(ModAction.objects.exists())
+        self.client.post(mod_url(c), NOTE)
+        c.refresh_from_db()
+        a = ModAction.objects.get()
+        self.assertTrue(c.is_hidden)
+        self.assertEqual((a.kind, a.reason, a.moderator, a.user, a.target), ('hide', 'troll', self.mod, self.alice, c))
+        self.client.post(mod_url(c), {'reason': 'troll', 'note': 'Yanlış gizleme.'})  # geri alma da kayda düşer
+        c.refresh_from_db()
+        self.assertFalse(c.is_hidden)
+        self.assertEqual(list(ModAction.objects.order_by('pk').values_list('kind', flat=True)), ['hide', 'unhide'])
+
+    def test_cannot_act_on_self_moderators_or_superusers(self):
+        root = make_user('kurucu')
+        User.objects.filter(pk=root.pk).update(is_superuser=True)
+        self.login(self.mod)
+        for owner in (self.mod, make_moderator('yonetici2'), root):
+            with self.subTest(owner.username):
+                c = Comment.objects.create(target=self.topic, author=owner, body='x')
+                self.assertEqual(self.client.post(mod_url(c), NOTE).status_code, 403)
+                data = NOTE | {'kind': 'ban', 'days': 1}
+                self.assertEqual(self.client.post(f'/mod/user/{owner.pk}/', data).status_code, 403)
+        self.assertFalse(ModAction.objects.exists())
+
+    def test_hiding_clears_panel_cache(self):
+        p = TopicOpenProposal.objects.create(proposer=self.bob, title='Panel önerisi')
+        self.assertContains(self.client.get('/'), 'Panel önerisi')  # panel önbelleğe girdi
+        self.login(self.mod)
+        self.client.post(mod_url(p), NOTE)
+        p.refresh_from_db()
+        self.assertEqual(p.status, S.CANCELLED)
+        self.assertNotContains(self.client.get('/'), 'Panel önerisi')
+
+    def test_ban_and_unban(self):
+        url = f'/mod/user/{self.bob.pk}/'
+        self.login(self.mod)
+        self.assertContains(self.client.post(url, NOTE | {'kind': 'ban'}), 'Engel süresini seç.')
+        self.client.post(url, NOTE | {'kind': 'ban', 'days': 7})
+        self.bob.refresh_from_db()
+        self.assertTrue(self.bob.is_banned)
+        self.assertAlmostEqual(self.bob.banned_until, timezone.now() + timedelta(days=7), delta=timedelta(minutes=1))
+        self.assertEqual(ModAction.objects.get().until, self.bob.banned_until)
+        self.client.post(url, NOTE | {'kind': 'unban'})
+        self.bob.refresh_from_db()
+        self.assertFalse(self.bob.is_banned)
+
+    def test_close_fake_account(self):
+        fake = make_user('sahte')
+        running = TopicCloseProposal.objects.create(proposer=self.alice, topic=self.topic)
+        finished = TopicOpenProposal.objects.create(proposer=self.alice, title='Bitti')
+        own = TopicOpenProposal.objects.create(proposer=fake, title='Sahtenin önerisi')
+        for p in (running, finished):
+            Vote.cast(proposal=p, voter=fake, choice='yes')
+        TopicOpenProposal.objects.filter(pk=finished.pk).update(voting_ends_at=timezone.now())  # oylama bitti
+        c = Comment.objects.create(target=self.topic, author=self.alice, body='x')
+        CommentVote.cast(c, fake, 1)
+        TopicVote.cast(self.topic, fake, -1)
+        url = f'/mod/user/{fake.pk}/'
+        self.login(self.mod)
+        self.assertContains(self.client.post(url, NOTE | {'kind': 'close'}), 'yalnızca')  # yalnızca sahte hesap
+        self.client.post(url, {'kind': 'close', 'reason': 'fake', 'note': 'Çoklu hesap.'})
+        for obj in (fake, c, self.topic, own):
+            obj.refresh_from_db()
+        self.assertFalse(fake.is_active)
+        self.assertEqual((c.score, self.topic.score), (0, 0))  # ▲/▼ oyları silindi, puanlar düzeldi
+        self.assertFalse(CommentVote.objects.exists() or TopicVote.objects.exists())
+        self.assertFalse(running.votes.filter(voter=fake).exists())  # süren oylamadaki oy silindi
+        self.assertTrue(finished.votes.filter(voter=fake).exists())  # bitmiş oylamaya dokunulmaz
+        self.assertEqual(own.status, S.CANCELLED)
+        self.client.post(url, {'kind': 'reopen', 'reason': 'fake', 'note': 'Yanlış tespit.'})
+        fake.refresh_from_db()
+        self.assertTrue(fake.is_active)
+
+    def test_log_is_append_only_public_and_filterable(self):
+        c = Comment.objects.create(target=self.topic, author=self.alice, body='Çok gizli söz')
+        self.login(self.mod)
+        self.client.post(mod_url(c), NOTE | {'note': 'Hakaret içeriyor.'})
+        a = ModAction.objects.get()
+        a.note = 'değişti'
+        with self.assertRaisesMessage(ValueError, 'değiştirilemez'):
+            a.save()
+        with self.assertRaisesMessage(ValueError, 'silinemez'):
+            a.delete()
+        with self.assertRaises(ProtectedError):
+            self.alice.delete()  # kayıttaki üye de silinemez
+        self.login(None)
+        r = self.client.get('/mod/log/?kind=hide&user=ALICE')
+        for text in ('Hakaret içeriyor.', 'alice', 'yonetici', 'trollük'):
+            self.assertContains(r, text)
+        self.assertNotContains(r, 'Çok gizli söz')  # gizli metin kayıtta yok
+        self.assertNotContains(self.client.get('/mod/log/?kind=ban'), 'Hakaret içeriyor.')
+        r = self.client.get(f'/r/{ContentType.objects.get_for_model(c).pk}/{c.pk}/')  # kayıttaki bağlantı
+        self.assertTrue(r['Location'].endswith(c.get_absolute_url()))

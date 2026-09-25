@@ -456,6 +456,21 @@ PROPOSAL_MODELS = (
 PROPOSALS = {model.SLUG: model for model in PROPOSAL_MODELS}
 
 
+PANEL_CACHE_KEY = 'active_panel'  # panelin ortak kısmı; moderasyon işlemleri temizler
+
+
+def withdraw_running(user):
+    """Hesap kapatma (sahte hesap): süren oylamalardaki oyları silinir, süren önerileri iptal olur.
+    Bitmiş oylamalara dokunulmaz; sonuçları kesinleşmiştir. Tip başına 2 sorgu.
+    """
+    now = timezone.now()
+    for model in PROPOSAL_MODELS:
+        running = model.objects.filter(status=BaseProposal.Status.VOTING, voting_ends_at__gt=now)
+        Vote.objects.filter(voter=user, content_type=ContentType.objects.get_for_model(model),
+                            object_id__in=running.values('pk')).delete()
+        running.filter(proposer=user).update(status=BaseProposal.Status.CANCELLED)
+
+
 def active_proposals():
     """Oylaması (istekte tartışması) süren tüm öneriler, participants = katılım sayısı; tip başına 1 sorgu.
     Açık öneriler sayfası ve ana sayfa paneli kullanır.

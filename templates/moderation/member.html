@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Üye: {{ member }}</h1>
+<p>{% if not member.is_active %}Hesap kapalı.{% elif member.is_banned %}{{ member.banned_until|date:"j F Y H:i" }} tarihine kadar engelli.{% else %}Engel yok.{% endif %}</p>
+{% if not allowed %}
+  <p>Bu üyeye işlem yapamazsın: kendin, bir yönetici ya da süper kullanıcı.</p>
+{% elif not kinds %}
+  <p>Hesap moderasyonla kapatılmadı (e-postası doğrulanmamış): moderasyon işlemi yok.</p>
+{% else %}
+  <form method="post">{% csrf_token %}
+    {{ form }}
+    <button>Uygula</button>
+  </form>
+  <p><small>Hesap yalnızca sahte hesapta kapatılır: süren oylamalardaki oyları ve bütün ▲/▼ oyları silinir,
+    süren önerileri iptal olur. Hesabı yeniden açmak bunları geri getirmez.</small></p>
+{% endif %}
+<h2>Geçmiş</h2>
+<ul>{% for a in history %}{% include "moderation/_action.html" %}{% empty %}<li>Kayıt yok.</li>{% endfor %}</ul>
+{% endblock %}

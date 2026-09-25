@@ -1,8 +1,25 @@
 from datetime import timedelta
 
 from django.conf import settings
+from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ObjectDoesNotExist
+from django.http import Http404
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+
+
+def get_target(ct, pk, base):
+    """URL'deki (içerik tipi, pk) çiftinin nesnesi. Beyaz liste: yalnızca `base`'ten türeyen modeller
+    (ör. bir User'a yorum yazılamaz, bir oy gizlenemez); yoksa 404.
+    """
+    try:
+        target = get_object_or_404(ContentType, pk=ct).get_object_for_this_type(pk=pk)
+    except ObjectDoesNotExist:
+        raise Http404
+    if not isinstance(target, base):
+        raise Http404
+    return target
 
 
 def back(request, default):

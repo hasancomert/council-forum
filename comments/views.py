@@ -1,13 +1,11 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
-from django.http import Http404
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from config.utils import back, over_limit
+from config.utils import back, get_target, over_limit
 
 from .forms import CommentForm
 from .models import Comment, Commentable, CommentVote
@@ -21,12 +19,7 @@ def _back(request, comment):
 @login_required
 @require_POST
 def add(request, ct, pk):
-    try:
-        target = get_object_or_404(ContentType, pk=ct).get_object_for_this_type(pk=pk)
-    except ObjectDoesNotExist:
-        raise Http404
-    if not isinstance(target, Commentable):  # beyaz liste: ör. bir User'a yorum yazılamaz
-        raise Http404
+    target = get_target(ct, pk, Commentable)
     if not target.is_open or not request.user.can_post:  # engelli okur ama yazamaz
         raise PermissionDenied
     url = target.get_absolute_url()

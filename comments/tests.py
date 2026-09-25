@@ -210,6 +210,7 @@ class VoteTests(CommentTestCase):
         request = RequestFactory().get('/')
         request.user = self.bob
         template = Template('{% load comments %}{% comment_section target %}')
+        ContentType.objects.get_for_model(Comment)  # süreç başına bir kez sorulur, sonra önbellekte
         with self.assertNumQueries(4):  # sayımlar, sayfa, yanıtlar, kullanıcının oyları
             html = template.render(Context({'request': request, 'target': self.topic}))
         self.assertEqual(html.count('class="comment"'), 5)

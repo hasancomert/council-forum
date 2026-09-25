@@ -2,7 +2,7 @@ from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.db import models, transaction
-from django.db.models import F
+from django.db.models import F, OuterRef, Subquery
 
 from moderation.models import Hideable
 
@@ -88,6 +88,17 @@ class UpDownVote(models.Model):
             old.delete()
         type(target).objects.filter(pk=target.pk).update(score=F('score') + new - old_value)  # atomik, sayım gerekmez
         return new
+
+    @classmethod
+    def withdraw_all(cls, voter):
+        """Hesap kapatma: kullanıcının bütün oylarını siler; hedeflerin puanı tek UPDATE ile düzelir
+        (hedef başına en fazla bir oy olduğundan alt sorgu tek değer döndürür).
+        """
+        mine = cls.objects.filter(voter=voter)
+        target_model = cls._meta.get_field(cls.TARGET).related_model
+        target_model.objects.filter(pk__in=mine.values(cls.TARGET)).update(
+            score=F('score') - Subquery(mine.filter(**{cls.TARGET: OuterRef('pk')}).values('value')))
+        mine.delete()
 
 
 class CommentVote(UpDownVote):

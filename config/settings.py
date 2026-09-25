@@ -164,4 +164,7 @@ FORUM = {
     'PANEL_DISCUSSION': 5,  # panelde en fazla tartışmadaki istek
     'PANEL_CACHE_SECONDS': 60,  # panelin herkes için aynı kısmı; 0 = önbellek yok
     'COMMENT_RATE': (5, 10),  # hız sınırı: 10 dakikada en fazla 5 yorum
+    'MOD_NOTE_MAX_LENGTH': 200,  # moderasyon işleminin herkese açık notu; değişirse makemigrations
+    'BAN_DAYS': (1, 7, 30, 365),  # seçilebilen engel süreleri (gün); kalıcı engel yok, sahte hesap kapatılır
+    'MOD_PER_PAGE': 50,  # moderasyon kaydı ve şikayet kuyruğu
 }

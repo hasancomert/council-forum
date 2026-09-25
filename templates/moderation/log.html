@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Moderasyon kaydı</h1>
+<p>Yöneticilerin bütün işlemleri burada; kayıt değiştirilemez ve silinemez. Gizlenen içeriğin metni gösterilmez.</p>
+<form method="get">
+  <select name="kind" aria-label="işlem"><option value="">tüm işlemler</option>
+    {% for v, label in kinds %}<option value="{{ v }}"{% if request.GET.kind == v %} selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <select name="reason" aria-label="gerekçe"><option value="">tüm gerekçeler</option>
+    {% for v, label in reasons %}<option value="{{ v }}"{% if request.GET.reason == v %} selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <input name="user" value="{{ request.GET.user }}" placeholder="takma ad" aria-label="takma ad">
+  <button>Süz</button>{% if request.GET %} <a href="{% url 'mod_log' %}">temizle</a>{% endif %}
+</form>
+<ul>{% for a in page %}{% include "moderation/_action.html" %}{% empty %}<li>Kayıt yok.</li>{% endfor %}</ul>
+{% include "_pages.html" %}
+{% endblock %}
