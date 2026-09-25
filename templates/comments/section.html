@@ -10,13 +10,15 @@
     {% include "comments/comment.html" %}
     {% for r in c.children %}{% include "comments/comment.html" with c=r reply=True %}{% endfor %}
   {% endfor %}
+  {% include "_pages.html" with anchor="#yorumlar" %}
   {% if not open %}
     <p>Yorumlar kapalı.</p>
   {% elif user.is_authenticated %}
     <form method="post" action="{% url 'comment_add' ct target.pk %}">{% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
       {{ form.body }}<button>Yorum yaz</button>
     </form>
   {% else %}
-    <p><a href="{% url 'login' %}?next={{ request.path|urlencode }}">Giriş yap</a>, yorum yaz.</p>
+    <p><a href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">Giriş yap</a>, yorum yaz.</p>
   {% endif %}
 </section>

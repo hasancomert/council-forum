@@ -6,6 +6,8 @@ from django.db.models import Count, OuterRef, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from config.utils import back
+
 from .models import SORTS, Topic, TopicVote, count_of
 
 # sekme: (başlık, süzgeç, varsayılan sıralama). Süzgeçler Topic.is_locked'ın sorgu karşılığı:
@@ -72,4 +74,4 @@ def vote(request, pk):
         TopicVote.cast(topic, request.user, {'1': 1, '-1': -1}.get(request.POST.get('value'), 0))
     except ValueError as e:
         messages.error(request, str(e))
-    return redirect(topic)
+    return redirect(back(request, topic.get_absolute_url()))  # yorumların hangi sayfasındaysa oraya

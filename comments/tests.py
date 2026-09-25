@@ -148,7 +148,7 @@ class VoteTests(CommentTestCase):
         r = self.client.post(f'/comments/{c.pk}/vote/', {'value': '5'}, follow=True)
         self.assertContains(r, 'Geçersiz oy.')
 
-    def test_section_in_two_queries(self):
+    def test_section_in_four_queries(self):
         for i in range(5):
             top = self.comment(f'ana {i}')
             for j in range(3):
@@ -156,7 +156,7 @@ class VoteTests(CommentTestCase):
         request = RequestFactory().get('/')
         request.user = self.bob
         template = Template('{% load comments %}{% comment_section target %}')
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(4):  # sayımlar, sayfa, yanıtlar, kullanıcının oyları
             html = template.render(Context({'request': request, 'target': self.topic}))
         self.assertEqual(html.count('class="comment"'), 5)
         self.assertEqual(html.count('class="comment reply"'), 15)

@@ -1,5 +1,6 @@
-{# ▲ puan ▼ formu (yorum ve konu). Değişkenler: url, score, mine (1, −1 ya da 0) #}
+{# ▲ puan ▼ formu (yorum ve konu). Değişkenler: url, score, mine (1, −1 ya da 0); işlemden sonra next'e dönülür #}
 <form method="post" action="{{ url }}" class="inline vote">{% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.get_full_path }}">
   <button name="value" value="1" title="Artı oy"{% if mine == 1 %} class="on" aria-pressed="true"{% endif %}>▲</button>
   {{ score }}
   <button name="value" value="-1" title="Eksi oy"{% if mine == -1 %} class="on" aria-pressed="true"{% endif %}>▼</button>
