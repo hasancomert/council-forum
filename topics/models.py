@@ -2,6 +2,8 @@ from django.conf import settings
 from django.db import models
 from django.urls import reverse
 
+from comments.models import Commentable
+
 
 class TopicQuerySet(models.QuerySet):
     def visible(self):
@@ -10,7 +12,7 @@ class TopicQuerySet(models.QuerySet):
         return self.filter(is_deleted=False).exclude(parent__is_deleted=True)
 
 
-class Topic(models.Model):
+class Topic(Commentable):
     # Alt konu = parent'ı dolu konu. limit_choices_to hem admin listesini süzer hem de
     # full_clean()'de denetler: üst konu yalnızca ana konu olabilir (iki seviye).
     parent = models.ForeignKey(

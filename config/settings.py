@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'accounts',
     'topics',
     'voting',
+    'comments',
 ]
 
 MIDDLEWARE = [
@@ -153,4 +154,5 @@ FORUM = {
     'REQUEST_VOTING_DAYS': 3,  # kural 5: istekler için oylama süresi
     'MAX_OPEN_PROPOSALS': 3,  # kural 8: kişi başı en fazla açık öneri
     'REJECTED_COOLDOWN_DAYS': 30,  # kural 8: reddedilen öneri bu kadar gün yeniden açılamaz
+    'COMMENT_MAX_LENGTH': 5000,  # yorum uzunluk sınırı; değişirse makemigrations (yalnızca form denetimi değişir)
 }
