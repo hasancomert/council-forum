@@ -43,3 +43,13 @@ class Topic(models.Model):
     def is_locked(self):
         """Kendisi ya da üst konusu kapalı mı (alanlara yazılmaz, hesaplanır)."""
         return self.is_closed or (self.parent is not None and self.parent.is_closed)
+
+    @property
+    def is_visible(self):
+        """visible() sorgusunun tek nesnelik karşılığı; ikisi birlikte güncellenir (8. adım)."""
+        return not (self.is_deleted or (self.parent_id and self.parent.is_deleted))
+
+    @property
+    def is_open(self):
+        """Kural 7: yeni yorum ve öneri kabul ediyor mu."""
+        return self.is_visible and not self.is_locked
