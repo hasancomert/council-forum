@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Konular</h1>
+{% if parent %}
+  <h1><a href="{{ parent.get_absolute_url }}">{{ parent }}</a> alt konuları
+    <a href="{% querystring parent=None page=None %}" title="Süzgeci kaldır">✕</a></h1>
+{% else %}
+  <h1>Konular</h1>
+{% endif %}
 <nav class="tabs">
   {% for key, label in tabs.items %}
     <a href="{% querystring tab=key sort=None page=None %}"{% if key == tab %} aria-current="page"{% endif %}>{{ label }}</a>
@@ -21,6 +26,6 @@
 {% include "_pages.html" %}
 <p>
   {% if user.is_authenticated %}<a href="{% url 'proposal_new' 'open' %}">Yeni ana konu öner</a> · {% endif %}
-  <a href="{% url 'proposals' %}">Açık öneriler</a> · <a href="{% url 'archive' %}">Arşiv</a>
+  <a href="{% url 'proposals' %}">Açık öneriler</a> · <a href="{% url 'archive' %}">Silinen konular</a>
 </p>
 {% endblock %}

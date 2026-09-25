@@ -3,5 +3,7 @@
   <span class="score" title="puan">{{ t.score }}</span>
   {% if t.parent and not parent %}<a href="{{ t.parent.get_absolute_url }}">{{ t.parent }}</a> › {% endif %}<a href="{{ t.get_absolute_url }}">{{ t.title }}</a>
   {% if t.is_locked %}<span class="badge">kapalı</span>{% endif %}
-  <br><small>{{ t.n_comments }} yorum{% if t.n_sub %} · {{ t.n_sub }} alt konu{% endif %} · {{ t.created_at|timesince }} önce</small>
+  <br><small>{{ t.n_comments }} yorum{% if t.n_sub %} · {{ t.n_sub }} alt konu{% endif %} · {{ t.created_at|timesince }} önce
+    {# üst konudan gelen kapalılıkta bağlantı üst konunun satırında #}
+    {% if tab == "closed" and t.is_closed and user.can_vote %} · <a href="{% url 'proposal_new' 'undo' t.pk %}">yeniden açmayı öner</a>{% endif %}</small>
 </li>

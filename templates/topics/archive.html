@@ -1,17 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Arşiv: kapalı ve silinmiş konular</h1>
+<h1>Silinen konular</h1>
+<p>Kapalı konular ana sayfanın <a href="{% url 'home' %}?tab=closed">Kapalı</a> sekmesinde.</p>
 <ul>
-  {% for topic in topics %}
+  {% for topic in page %}
     <li>
-      {% if topic.parent %}{{ topic.parent.title }} › {% endif %}
-      {% if topic.is_visible %}<a href="{{ topic.get_absolute_url }}">{{ topic.title }}</a>{% else %}{{ topic.title }}{% endif %}
-      · {{ topic.created_at|date:"j F Y" }}
-      · {% if topic.is_deleted %}silinmiş{% if topic.is_closed %}, kapalı{% endif %}{% else %}kapalı{% endif %}
-      {% if user.is_authenticated %}· <a href="{% url 'proposal_new' 'undo' topic.pk %}">geri almayı öner</a>{% endif %}
+      {% if topic.parent %}{{ topic.parent.title }} › {% endif %}{{ topic.title }} · {{ topic.created_at|date:"j F Y" }}
+      {% if user.can_vote %}· <a href="{% url 'proposal_new' 'undo' topic.pk %}">geri getirmeyi öner</a>{% endif %}
     </li>
   {% empty %}
-    <li>Kapalı ya da silinmiş konu yok.</li>
+    <li>Silinen konu yok.</li>
   {% endfor %}
 </ul>
+{% include "_pages.html" %}
 {% endblock %}

@@ -24,13 +24,13 @@
 {% endif %}
 {% if not topic.parent %}
   <h2>Alt konular</h2>
-  <ul>
-    {% for child in children %}
-      <li><a href="{{ child.get_absolute_url }}">{{ child.title }}</a>{% if child.is_locked %} (Kapalı){% endif %}</li>
-    {% empty %}
-      <li>Alt konu yok.</li>
-    {% endfor %}
+  <ul class="topics">
+    {% for t in subs %}{% include "topics/_row.html" with parent=topic %}{% empty %}<li>Açık alt konu yok.</li>{% endfor %}
   </ul>
+  <p>
+    {% if n_subs.open > subs|length %}<a href="{% url 'home' %}?tab=sub&amp;parent={{ topic.pk }}">tüm alt konular ({{ n_subs.open }}) →</a>{% endif %}
+    {% if n_subs.closed %}<a href="{% url 'home' %}?tab=closed&amp;parent={{ topic.pk }}">kapalı alt konular ({{ n_subs.closed }}) →</a>{% endif %}
+  </p>
 {% endif %}
 {% comment_section topic %}
 {% endblock %}
