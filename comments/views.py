@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .forms import CommentForm
-from .models import Comment, Commentable
+from .models import Comment, Commentable, CommentVote
 
 
 @login_required
@@ -47,6 +47,17 @@ def edit(request, pk):
             form.save()
         return redirect(comment)
     return render(request, 'comments/edit.html', {'form': form, 'comment': comment, 'title': 'Yorumu düzenle'})
+
+
+@login_required
+@require_POST
+def vote(request, pk):
+    comment = get_object_or_404(Comment, pk=pk)
+    try:
+        CommentVote.cast(comment, request.user, {'1': 1, '-1': -1}.get(request.POST.get('value'), 0))
+    except ValueError as e:
+        messages.error(request, str(e))
+    return redirect(comment)
 
 
 @login_required

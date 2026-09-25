@@ -1,7 +1,8 @@
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
-from django.db import models
+from django.db import models, transaction
+from django.db.models import F
 
 
 class Commentable(models.Model):
@@ -46,3 +47,34 @@ class Comment(models.Model):
 
     def get_absolute_url(self):
         return f'{self.target.get_absolute_url()}#c{self.pk}'
+
+
+class CommentVote(models.Model):
+    # Karar oyu (voting.Vote) değil: ağırlık yok (kural 2), puan herkese açık ve anında güncellenir,
+    # aktif üye sayımına girmez. Gerçek ForeignKey olduğu için model de sorgu da daha basit.
+    comment = models.ForeignKey(Comment, models.CASCADE, related_name='votes')
+    voter = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE)
+    value = models.SmallIntegerField(choices=[(1, '▲'), (-1, '▼')])
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['comment', 'voter'], name='yorum_tek_oy')]
+
+    @classmethod
+    @transaction.atomic
+    def cast(cls, comment, voter, value):
+        """▲ (1) ya da ▼ (−1); aynı tuşa ikinci basış oyu geri alır. Yeni oyu (1, −1, 0) döndürür."""
+        if value not in (1, -1):
+            raise ValueError('Geçersiz oy.')
+        # Yorum satırını kilitle: aynı yoruma eşzamanlı oylar (ör. çift tık) sırayla işlensin, puan kaymasın.
+        comment = Comment.objects.select_for_update().get(pk=comment.pk)
+        if not voter.can_vote or comment.author_id == voter.pk or comment.is_deleted or not comment.target.is_open:
+            raise ValueError('Bu yoruma oy verilemez.')
+        old = cls.objects.filter(comment=comment, voter=voter).first()
+        old_value = old.value if old else 0
+        new = 0 if value == old_value else value
+        if new:
+            cls.objects.update_or_create(comment=comment, voter=voter, defaults={'value': new})
+        elif old:
+            old.delete()
+        Comment.objects.filter(pk=comment.pk).update(score=F('score') + new - old_value)  # atomik, sayım gerekmez
+        return new
