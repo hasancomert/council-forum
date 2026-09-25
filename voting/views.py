@@ -24,9 +24,10 @@ def proposal_list(request):  # ana sayfa panelinin "tümü" sayfası
 def detail(request, slug, pk):
     proposal = get_object_or_404(_model(slug), pk=pk)
     proposal.finalize()  # lazy kontrol: süresi dolmuşsa sonuç burada yazılır
+    masked = proposal.hidden_from(request.user)  # gizli önerinin metnini yalnızca önereni ve yöneticiler görür
     return render(request, 'voting/detail.html', {
-        'proposal': proposal,
-        'title': str(proposal),
+        'proposal': proposal, 'masked': masked,
+        'title': 'Moderasyonla gizlendi' if masked else str(proposal),
         'my_vote': request.user.is_authenticated and proposal.votes.filter(voter=request.user).first(),
         'tally': proposal.results_visible and proposal.tally(),  # kural 6: sonuç bitince açıklanır
     })
@@ -38,7 +39,8 @@ def new(request, slug, topic_pk=None):
     proposal = model(proposer=request.user)
     if model.TARGET and topic_pk is not None:
         # Geri alma kapalı/silinmiş konuya açılır; diğerleri yalnızca görünür konuya (gizli içerik forma dolmasın).
-        topics = Topic.objects.all() if model is TopicUndoProposal else Topic.objects.visible()
+        # Moderasyonla gizlenen konu hiç öneri almaz.
+        topics = Topic.objects.filter(is_hidden=False) if model is TopicUndoProposal else Topic.objects.visible()
         setattr(proposal, model.TARGET, get_object_or_404(topics, pk=topic_pk))
         proposal.prefill()
     elif topic_pk is not None or model.TARGET == 'topic':

@@ -2,24 +2,32 @@
 {% load comments %}
 {% block content %}
 <p><a href="{% url 'proposals' %}">← Açık öneriler</a></p>
-<h1>{{ proposal }}</h1>
+<h1>{% if masked %}Moderasyonla gizlendi{% else %}{{ proposal }}{% endif %}</h1>
 <p>{{ proposal.kind|capfirst }} · {{ proposal.proposer|default:"silinmiş üye" }} · {{ proposal.created_at|date:"j F Y H:i" }}</p>
 
-{% if proposal.parent %}
-  <p>Üst konu: {% if proposal.parent.is_visible %}<a href="{{ proposal.parent.get_absolute_url }}">{{ proposal.parent }}</a>{% else %}{{ proposal.parent }} (silinmiş){% endif %}</p>
+{% if masked %}
+  <p><em>Bu öneri moderasyonla gizlendi.</em></p>
+{% else %}
+  {% if proposal.is_hidden %}<p><em>Bu öneri moderasyonla gizlendi; metnini yalnızca sen ve yöneticiler görüyor.</em></p>{% endif %}
+  {# gizli konunun adı burada da kendiliğinden maskelenir (Topic.__str__) #}
+  {% if proposal.parent %}
+    <p>Üst konu: {% if proposal.parent.has_page %}<a href="{{ proposal.parent.get_absolute_url }}">{{ proposal.parent }}</a>{% else %}{{ proposal.parent }} (silinmiş){% endif %}</p>
+  {% endif %}
+  {% if proposal.topic %}
+    <p>Konu: {% if proposal.topic.has_page %}<a href="{{ proposal.topic.get_absolute_url }}">{{ proposal.topic }}</a>{% else %}{{ proposal.topic }} (silinmiş){% endif %}</p>
+  {% endif %}
+  {% if proposal.target_user %}<p>Üye: {{ proposal.target_user }}</p>{% endif %}
+  {% if proposal.action %}<p>İşlem: {{ proposal.get_action_display }}</p>{% endif %}
+  {% if proposal.new_title %}<p>Önerilen başlık: <strong>{{ proposal.new_title }}</strong></p>{{ proposal.new_description|linebreaks }}{% endif %}
+  {% if proposal.description %}{{ proposal.description|linebreaks }}{% endif %}
+  {% if proposal.content %}{{ proposal.content|linebreaks }}{% endif %}
+  {% if proposal.reason %}<h2>Gerekçe</h2>{{ proposal.reason|linebreaks }}{% endif %}
 {% endif %}
-{% if proposal.topic %}
-  <p>Konu: {% if proposal.topic.is_visible %}<a href="{{ proposal.topic.get_absolute_url }}">{{ proposal.topic }}</a>{% else %}{{ proposal.topic }} (silinmiş){% endif %}</p>
-{% endif %}
-{% if proposal.target_user %}<p>Üye: {{ proposal.target_user }}</p>{% endif %}
-{% if proposal.action %}<p>İşlem: {{ proposal.get_action_display }}</p>{% endif %}
-{% if proposal.new_title %}<p>Önerilen başlık: <strong>{{ proposal.new_title }}</strong></p>{{ proposal.new_description|linebreaks }}{% endif %}
-{% if proposal.description %}{{ proposal.description|linebreaks }}{% endif %}
-{% if proposal.content %}{{ proposal.content|linebreaks }}{% endif %}
-{% if proposal.reason %}<h2>Gerekçe</h2>{{ proposal.reason|linebreaks }}{% endif %}
 
 <h2>Oylama</h2>
-{% if tally %}
+{% if proposal.status == "cancelled" %}
+  <p>Sonuç: <strong>İptal edildi</strong>. Oylama sonuçlanmadığı için ara sonuç açıklanmaz.</p>
+{% elif tally %}
   <p>Sonuç: <strong>{{ proposal.get_status_display }}</strong>{% if proposal.applied_at %} · {{ proposal.applied_at|date:"j F Y H:i" }}{% endif %}</p>
   <p>Evet {{ tally.yes }} · Hayır {{ tally.no }}{% if proposal.WEIGHTED %} (ağırlıklı){% endif %} · katılım {{ tally.count }}, yeter sayı {{ proposal.quorum }}</p>
   {% if proposal.status == "accepted" %}<p>Hedefin şu anki durumu uygun olmadığı için henüz uygulanamadı.</p>{% endif %}

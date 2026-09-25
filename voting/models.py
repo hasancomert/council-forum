@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from accounts.models import User
 from comments.models import Comment, Commentable
+from moderation.models import Hideable
 from topics.models import Topic
 
 
@@ -59,7 +60,7 @@ class Vote(models.Model):
         return vote
 
 
-class BaseProposal(Commentable):
+class BaseProposal(Commentable, Hideable):
     """Ortak öneri iskeleti. Tip başına ayrı model kullanılıyor (Vote hariç), böylece her
     önerinin kendi hedef/payload alanları olur; oy/ağırlık/süre mantığı burada tekrar etmez.
     """
@@ -68,7 +69,11 @@ class BaseProposal(Commentable):
         ACCEPTED = 'accepted', 'Kabul edildi'
         REJECTED = 'rejected', 'Reddedildi'
         APPLIED = 'applied', 'Uygulandı'
+        # Moderasyon: gizlenen ya da önereni kapatılan süren öneri. finalize() atlar; açık öneri sayısına
+        # ve 30 günlük ret yasağına girmez (ikisi yalnızca VOTING/REJECTED'e bakar).
+        CANCELLED = 'cancelled', 'İptal edildi'
 
+    OWNER = 'proposer'
     in_discussion = False  # yalnızca istekte tartışma evresi var (RequestProposal property ile ezer)
     SLUG = ''  # URL'deki tip adı; PROPOSALS sözlüğü modeli bununla bulur
     TARGET = 'topic'  # formda URL'den gelen konunun yazılacağı alan (yoksa None)
@@ -119,7 +124,16 @@ class BaseProposal(Commentable):
 
     @property
     def results_visible(self):
-        return self.status != self.Status.VOTING  # kural 6: sonuç bitene kadar gizli
+        # Kural 6: sonuç bitene kadar gizli; iptal edilen oylama hiç bitmediği için ara sonucu da açıklanmaz.
+        return self.status not in (self.Status.VOTING, self.Status.CANCELLED)
+
+    def set_hidden(self, hidden):
+        """Süren öneri gizlenince iptal olur; gizleme kaldırılınca iptal kalır (oylama süresi geri gelmez)."""
+        if hidden:
+            self.finalize()  # süresi dolmuşsa önce sonuçlansın: bitmiş oylama iptal edilmez
+            type(self).objects.filter(pk=self.pk, status=self.Status.VOTING).update(status=self.Status.CANCELLED)
+            self.refresh_from_db(fields=['status'])
+        super().set_hidden(hidden)
 
     @property
     def participant_count(self):
@@ -186,7 +200,7 @@ class BaseProposal(Commentable):
     def check_target(self):
         """Tipe göre ek denetim. Varsayılan (düzenleme, kapatma, silme, istek): kural 7."""
         if self.topic_id and not self.topic.is_open:
-            raise ValidationError('Kapalı ya da silinmiş konu yeni öneri almaz.')
+            raise ValidationError('Kapalı, silinmiş ya da gizlenmiş konu yeni öneri almaz.')
 
     def is_duplicate(self):
         """Kural 8: aynısı oylamada mı, ya da reddedilmesinin üzerinden bekleme süresi geçmedi mi.
@@ -333,6 +347,8 @@ class TopicUndoProposal(BaseProposal):
     def check_target(self):
         if not self.topic_id:
             return
+        if self.topic.is_hidden:
+            raise ValidationError('Gizlenmiş konu öneri almaz.')  # moderasyon yalnızca yöneticiyle geri alınır
         if not (self.topic.is_closed if self.action == self.Action.REOPEN else self.topic.is_deleted):
             raise ValidationError('Bu konuda geri alınacak bir kapatma ya da silme yok.')
 

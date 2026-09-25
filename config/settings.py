@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'topics',
     'voting',
     'comments',
+    'moderation',
 ]
 
 MIDDLEWARE = [

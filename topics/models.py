@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from comments.models import Comment, Commentable, CommentVote, UpDownVote
+from moderation.models import Hideable
 
 
 def count_of(model, **filters):
@@ -22,29 +23,35 @@ SORTS = {'popular': ('-heat', '-created_at'), 'votes': ('-score', '-created_at')
 
 
 class TopicQuerySet(models.QuerySet):
-    def visible(self):
-        # Görünürlüğün tek yeri: silinenleri ve üst konusu silinenleri eler, kapalıları elemez.
-        # 8. adımdaki moderasyon gizlemesi de buraya eklenecek.
+    def existing(self):
+        """Sayfası açılan konular: silinmemiş ve üst konusu silinmemiş (gizli konunun sayfası açılır)."""
         return self.filter(is_deleted=False).exclude(parent__is_deleted=True)
+
+    def visible(self):
+        """Görünürlüğün tek yeri: listelenen, yorum/oy/öneri alan konular. Kapalıları elemez; gizlileri ve
+        üst konusu gizli olanları eler (silmedeki gibi miras). 8. adımdan beri existing()'in alt kümesi.
+        """
+        return self.existing().filter(is_hidden=False).exclude(parent__is_hidden=True)
 
     def ranked(self, sort):
         """Yorum sayısını (n_comments) ekler ve SORTS'a göre sıralar. heat ("en popüler") yalnızca
         o sıralamada hesaplanır: son POPULAR_DAYS günün yorumları ve oyları (yönüne bakılmaz).
+        Silinmiş ve gizli yorumlar sayılmaz.
         """
         ct = ContentType.objects.get_for_model(self.model)
-        on_topic = {'content_type': ct, 'object_id': OuterRef('pk'), 'is_deleted': False}
+        on_topic = {'content_type': ct, 'object_id': OuterRef('pk'), 'is_deleted': False, 'is_hidden': False}
         qs = self.annotate(n_comments=count_of(Comment, **on_topic))
         if sort == 'popular':
             since = timezone.now() - timedelta(days=settings.FORUM['POPULAR_DAYS'])
             w = settings.FORUM['POPULAR_WEIGHTS']
             qs = qs.annotate(heat=w['comment'] * count_of(Comment, created_at__gte=since, **on_topic)
                              + w['vote'] * (count_of(CommentVote, voted_at__gte=since, comment__content_type=ct,
-                                                     comment__object_id=OuterRef('pk'))
+                                                     comment__object_id=OuterRef('pk'), comment__is_hidden=False)
                                             + count_of(TopicVote, voted_at__gte=since, topic=OuterRef('pk'))))
         return qs.order_by(*SORTS[sort])
 
 
-class Topic(Commentable):
+class Topic(Commentable, Hideable):
     # Alt konu = parent'ı dolu konu. limit_choices_to hem admin listesini süzer hem de
     # full_clean()'de denetler: üst konu yalnızca ana konu olabilir (iki seviye).
     parent = models.ForeignKey(
@@ -69,7 +76,8 @@ class Topic(Commentable):
         ordering = ['-created_at']
 
     def __str__(self):
-        return self.title
+        # Gizli konunun adı başka yerlerde de ("Kapat: …", "← üst konu") görünmez; sayfası title'ı kendisi seçer.
+        return 'gizlenmiş konu' if self.is_hidden else self.title
 
     def get_absolute_url(self):
         return reverse('topic', args=[self.pk])
@@ -80,9 +88,14 @@ class Topic(Commentable):
         return self.is_closed or (self.parent is not None and self.parent.is_closed)
 
     @property
-    def is_visible(self):
-        """visible() sorgusunun tek nesnelik karşılığı; ikisi birlikte güncellenir (8. adım)."""
+    def has_page(self):
+        """existing() sorgusunun tek nesnelik karşılığı: sayfası açılır mı."""
         return not (self.is_deleted or (self.parent_id and self.parent.is_deleted))
+
+    @property
+    def is_visible(self):
+        """visible() sorgusunun tek nesnelik karşılığı; ikisi birlikte güncellenir."""
+        return self.has_page and not (self.is_hidden or (self.parent_id and self.parent.is_hidden))
 
     @property
     def is_open(self):

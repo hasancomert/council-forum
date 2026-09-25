@@ -38,7 +38,7 @@ def add(request, ct, pk):
         messages.error(request, 'Çok sık yorum yazıyorsun, biraz bekle.')
         return redirect(back(request, url))
     p = request.POST.get('parent', '')
-    parent = target.comments.filter(pk=p, is_deleted=False).first() if p.isdigit() else None
+    parent = target.comments.filter(pk=p, is_deleted=False, is_hidden=False).first() if p.isdigit() else None
     comment = form.save(commit=False)
     comment.target, comment.author = target, request.user
     comment.parent_id = parent and (parent.parent_id or parent.pk)  # yanıta yanıt → ana yoruma; başka hedefin yorumu → None
@@ -50,8 +50,8 @@ def add(request, ct, pk):
 @login_required
 def edit(request, pk):
     comment = get_object_or_404(Comment, pk=pk, author=request.user, is_deleted=False)
-    if not comment.target.is_open or not request.user.can_post:
-        raise PermissionDenied  # hedef kapanınca yorumlar donar; engelli düzenleyemez (silebilir)
+    if comment.is_hidden or not comment.target.is_open or not request.user.can_post:
+        raise PermissionDenied  # gizli yorum ve kapanan hedef donar; engelli düzenleyemez (silebilir)
     form = CommentForm(request.POST if request.method == 'POST' else None, instance=comment)
     if form.is_valid():
         if form.has_changed():

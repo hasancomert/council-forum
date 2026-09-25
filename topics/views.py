@@ -32,7 +32,7 @@ def home(request):
     sort = g.get('sort') if g.get('sort') in SORTS else sort
     qs = qs.filter(where).select_related('parent').ranked(sort)
     if tab == 'main':
-        qs = qs.annotate(n_sub=count_of(Topic, parent=OuterRef('pk'), is_deleted=False))
+        qs = qs.annotate(n_sub=count_of(Topic, parent=OuterRef('pk'), is_deleted=False, is_hidden=False))
     return render(request, 'topics/home.html', {
         'page': Paginator(qs, settings.FORUM['TOPICS_PER_PAGE']).get_page(g.get('page')),  # geçersiz sayfa → ilk/son
         'tab': tab, 'sort': sort, 'parent': parent, 'tabs': tabs,
@@ -44,16 +44,19 @@ def home(request):
 def archive(request):
     # Kural 7: silinen konunun yalnızca başlığı ve tarihi görünür (şablonda); içerik gizli kalır.
     # Kapalılar ana sayfanın "Kapalı" sekmesinde; üst konusu silinen alt konu, üst konu geri gelince döner.
-    topics = Topic.objects.filter(is_deleted=True).select_related('parent')
+    # Gizliler burada da listelenmez.
+    topics = (Topic.objects.filter(is_deleted=True, is_hidden=False).exclude(parent__is_hidden=True)
+              .select_related('parent'))
     page = Paginator(topics, settings.FORUM['TOPICS_PER_PAGE']).get_page(request.GET.get('page'))
     return render(request, 'topics/archive.html', {'page': page, 'title': 'Silinen konular'})
 
 
 def detail(request, pk):
-    topic = get_object_or_404(Topic.objects.visible().select_related('parent'), pk=pk)  # gizli konu 404
+    topic = get_object_or_404(Topic.objects.existing().select_related('parent'), pk=pk)  # silinmiş 404, gizli açılır
     user = request.user
+    masked = topic.hidden_from(user)  # metni yalnızca sahibi ve yöneticiler görür
     context = {
-        'topic': topic, 'title': topic.title,
+        'topic': topic, 'masked': masked, 'title': 'Moderasyonla gizlendi' if masked else topic.title,
         'votable': user.is_authenticated and topic.can_be_voted_by(user),
         # a and b or 0: giriş yoksa ya da oy yoksa 0
         'my_vote': user.is_authenticated and TopicVote.objects.filter(

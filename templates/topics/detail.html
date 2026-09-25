@@ -3,13 +3,18 @@
 {% block aside %}{% active_panel %}{% endblock %}
 {% block content %}
 {% if topic.parent %}<p><a href="{{ topic.parent.get_absolute_url }}">← {{ topic.parent }}</a></p>{% endif %}
-<h1>{{ topic.title }}{% if topic.is_locked %} (Kapalı){% endif %}</h1>
+<h1>{% if masked %}Moderasyonla gizlendi{% else %}{{ topic.title }}{% endif %}{% if topic.is_locked %} (Kapalı){% endif %}</h1>
 <div>
   {% if votable %}{% url 'topic_vote' topic.pk as url %}{% include "_vote.html" with score=topic.score mine=my_vote %}
   {% else %}puan {{ topic.score }}{% endif %}
   · {{ topic.author|default:"silinmiş üye" }} · {{ topic.created_at }}
 </div>
-{{ topic.description|linebreaks }}
+{% if masked %}
+  <p><em>Bu konu moderasyonla gizlendi.</em></p>
+{% else %}
+  {% if topic.is_hidden %}<p><em>Bu konu moderasyonla gizlendi; metnini yalnızca sen ve yöneticiler görüyor.</em></p>{% endif %}
+  {{ topic.description|linebreaks }}
+{% endif %}
 {% if user.is_authenticated %}
   <p>
     {% if topic.is_open %}
@@ -18,7 +23,7 @@
       <a href="{% url 'proposal_new' 'delete' topic.pk %}">Silme öner</a> ·
       <a href="{% url 'proposal_new' 'request' topic.pk %}">İstek aç</a>
       {% if not topic.parent %} · <a href="{% url 'proposal_new' 'open' topic.pk %}">Alt konu öner</a>{% endif %}
-    {% elif topic.is_closed %}
+    {% elif topic.is_closed and not topic.is_hidden %}
       <a href="{% url 'proposal_new' 'undo' topic.pk %}">Yeniden açmayı öner</a>
     {% endif %}
   </p>

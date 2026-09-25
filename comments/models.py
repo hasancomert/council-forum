@@ -4,6 +4,8 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models, transaction
 from django.db.models import F
 
+from moderation.models import Hideable
+
 
 class Commentable(models.Model):
     """Yorum alabilen modellerin ortak atası (Java'daki interface gibi): Topic ve BaseProposal.
@@ -20,7 +22,7 @@ class Commentable(models.Model):
         raise NotImplementedError
 
 
-class Comment(models.Model):
+class Comment(Hideable):
     content_type = models.ForeignKey(ContentType, models.CASCADE)
     object_id = models.PositiveIntegerField()
     target = GenericForeignKey()
@@ -49,7 +51,8 @@ class Comment(models.Model):
         return f'{self.target.get_absolute_url()}#c{self.pk}'
 
     def can_be_voted_by(self, user):
-        return user.can_vote and self.author_id != user.pk and not self.is_deleted and self.target.is_open
+        return (user.can_vote and self.author_id != user.pk and not self.is_deleted and not self.is_hidden
+                and self.target.is_open)
 
 
 class UpDownVote(models.Model):

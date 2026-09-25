@@ -5,7 +5,7 @@
 <ul>
   {% for topic in page %}
     <li>
-      {% if topic.parent %}{{ topic.parent.title }} › {% endif %}{{ topic.title }} · {{ topic.created_at|date:"j F Y" }}
+      {% if topic.parent %}{{ topic.parent }} › {% endif %}{{ topic.title }} · {{ topic.created_at|date:"j F Y" }}
       {% if user.can_vote %}· <a href="{% url 'proposal_new' 'undo' topic.pk %}">geri getirmeyi öner</a>{% endif %}
     </li>
   {% empty %}
