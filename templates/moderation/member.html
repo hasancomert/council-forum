@@ -1,9 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Üye: {{ member }}</h1>
-<p>{% if not member.is_active %}Hesap kapalı.{% elif member.is_banned %}{{ member.banned_until|date:"j F Y H:i" }} tarihine kadar engelli.{% else %}Engel yok.{% endif %}</p>
+<p>{% if member.deleted_at %}Hesap üye tarafından silindi.{% elif not member.is_active %}Hesap kapalı.{% elif member.is_banned %}{{ member.banned_until|date:"j F Y H:i" }} tarihine kadar engelli.{% else %}Engel yok.{% endif %}</p>
 {% if not allowed %}
   <p>Bu üyeye işlem yapamazsın: kendin, bir yönetici ya da süper kullanıcı.</p>
+{% elif member.deleted_at %}
+  <p>Silinen hesaba moderasyon işlemi yapılmaz.</p>
 {% elif not kinds %}
   <p>Hesap moderasyonla kapatılmadı (e-postası doğrulanmamış): moderasyon işlemi yok.</p>
 {% else %}
