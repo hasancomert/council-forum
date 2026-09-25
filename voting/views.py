@@ -6,7 +6,10 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .models import PROPOSAL_MODELS, PROPOSALS, BaseProposal, Vote
+from topics.models import Topic
+
+from .forms import proposal_form
+from .models import PROPOSAL_MODELS, PROPOSALS, BaseProposal, TopicUndoProposal, Vote
 
 
 def _model(slug):
@@ -33,6 +36,26 @@ def detail(request, slug, pk):
         'my_vote': request.user.is_authenticated and proposal.votes.filter(voter=request.user).first(),
         'tally': proposal.results_visible and proposal.tally(),  # kural 6: sonuç bitince açıklanır
     })
+
+
+@login_required
+def new(request, slug, topic_pk=None):
+    model = _model(slug)
+    proposal = model(proposer=request.user)
+    if model.TARGET and topic_pk is not None:
+        # Geri alma kapalı/silinmiş konuya açılır; diğerleri yalnızca görünür konuya (gizli içerik forma dolmasın).
+        topics = Topic.objects.all() if model is TopicUndoProposal else Topic.objects.visible()
+        setattr(proposal, model.TARGET, get_object_or_404(topics, pk=topic_pk))
+        proposal.prefill()
+    elif topic_pk is not None or model.TARGET == 'topic':
+        raise Http404  # konuya bağlı tipte konu eksik, ya da konu almayan tipe konu verilmiş
+    # Öneren ve hedef is_valid()'den önce yazılır; is_valid() modelin clean()'ini de çalıştırır.
+    form = proposal_form(model)(request.POST if request.method == 'POST' else None, instance=proposal)
+    if form.is_valid():
+        form.save()
+        messages.success(request, 'Öneri açıldı.')
+        return redirect(proposal)
+    return render(request, 'voting/new.html', {'form': form, 'proposal': proposal, 'title': f'Yeni {model._meta.verbose_name}'})
 
 
 @login_required

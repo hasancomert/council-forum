@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Arşiv: kapalı ve silinmiş konular</h1>
+<ul>
+  {% for topic in topics %}
+    <li>
+      {% if topic.parent %}{{ topic.parent.title }} › {% endif %}
+      {% if topic.is_visible %}<a href="{{ topic.get_absolute_url }}">{{ topic.title }}</a>{% else %}{{ topic.title }}{% endif %}
+      · {{ topic.created_at|date:"j F Y" }}
+      · {% if topic.is_deleted %}silinmiş{% if topic.is_closed %}, kapalı{% endif %}{% else %}kapalı{% endif %}
+      {% if user.is_authenticated %}· <a href="{% url 'proposal_new' 'undo' topic.pk %}">geri almayı öner</a>{% endif %}
+    </li>
+  {% empty %}
+    <li>Kapalı ya da silinmiş konu yok.</li>
+  {% endfor %}
+</ul>
+{% endblock %}
