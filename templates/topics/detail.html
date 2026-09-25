@@ -3,7 +3,11 @@
 {% block content %}
 {% if topic.parent %}<p><a href="{{ topic.parent.get_absolute_url }}">← {{ topic.parent }}</a></p>{% endif %}
 <h1>{{ topic.title }}{% if topic.is_locked %} (Kapalı){% endif %}</h1>
-<p>{{ topic.author|default:"silinmiş üye" }} · {{ topic.created_at }}</p>
+<div>
+  {% if votable %}{% url 'topic_vote' topic.pk as url %}{% include "_vote.html" with score=topic.score mine=my_vote %}
+  {% else %}puan {{ topic.score }}{% endif %}
+  · {{ topic.author|default:"silinmiş üye" }} · {{ topic.created_at }}
+</div>
 {{ topic.description|linebreaks }}
 {% if user.is_authenticated %}
   <p>

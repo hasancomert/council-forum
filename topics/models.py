@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.urls import reverse
 
-from comments.models import Commentable
+from comments.models import Commentable, UpDownVote
 
 
 class TopicQuerySet(models.QuerySet):
@@ -27,6 +27,7 @@ class Topic(Commentable):
     created_at = models.DateTimeField('açılış tarihi', auto_now_add=True)
     is_closed = models.BooleanField('kapalı', default=False)
     is_deleted = models.BooleanField('silinmiş', default=False)
+    score = models.IntegerField('puan', default=0, editable=False)  # ▲ − ▼, yalnızca UpDownVote.cast() değiştirir
 
     objects = TopicQuerySet.as_manager()
 
@@ -55,3 +56,15 @@ class Topic(Commentable):
     def is_open(self):
         """Kural 7: yeni yorum ve öneri kabul ediyor mu."""
         return self.is_visible and not self.is_locked
+
+    def can_be_voted_by(self, user):
+        return user.can_vote and self.author_id != user.pk and self.is_open
+
+
+class TopicVote(UpDownVote):
+    # "En çok oy" sıralamasının verisi; yorum oyuyla aynı kurallar. Kimin ne verdiği gizli: admin'de yok.
+    TARGET = 'topic'
+    topic = models.ForeignKey(Topic, models.CASCADE, related_name='votes')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['topic', 'voter'], name='konu_tek_oy')]

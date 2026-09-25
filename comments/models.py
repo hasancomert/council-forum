@@ -35,7 +35,7 @@ class Comment(models.Model):
     created_at = models.DateTimeField('tarih', auto_now_add=True)
     edited_at = models.DateTimeField('düzenlenme', null=True, editable=False)
     is_deleted = models.BooleanField('silinmiş', default=False)  # yumuşak silme, metin kalır (kural 7)
-    score = models.IntegerField('puan', default=0, editable=False)  # ▲ − ▼, yalnızca CommentVote.cast() değiştirir
+    score = models.IntegerField('puan', default=0, editable=False)  # ▲ − ▼, yalnızca UpDownVote.cast() değiştirir
 
     class Meta:
         verbose_name = 'yorum'
@@ -48,33 +48,48 @@ class Comment(models.Model):
     def get_absolute_url(self):
         return f'{self.target.get_absolute_url()}#c{self.pk}'
 
+    def can_be_voted_by(self, user):
+        return user.can_vote and self.author_id != user.pk and not self.is_deleted and self.target.is_open
 
-class CommentVote(models.Model):
-    # Karar oyu (voting.Vote) değil: ağırlık yok (kural 2), puan herkese açık ve anında güncellenir,
-    # aktif üye sayımına girmez. Gerçek ForeignKey olduğu için model de sorgu da daha basit.
-    comment = models.ForeignKey(Comment, models.CASCADE, related_name='votes')
+
+class UpDownVote(models.Model):
+    """▲/▼ oyunun ortak atası (CommentVote, topics.TopicVote). Karar oyu (voting.Vote) değil: ağırlık
+    yok (kural 2), puan herkese açık ve anında güncellenir, aktif üye sayımına girmez.
+    Alt sınıf hedef FK'yi tanımlar, adını TARGET'a yazar; hedefte `score` ve `can_be_voted_by(user)` olmalı.
+    """
+    TARGET = None
     voter = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE)
     value = models.SmallIntegerField(choices=[(1, '▲'), (-1, '▼')])
+    voted_at = models.DateTimeField(auto_now=True)  # "en popüler" penceresi; yön değişince de güncellenir
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['comment', 'voter'], name='yorum_tek_oy')]
+        abstract = True
 
     @classmethod
     @transaction.atomic
-    def cast(cls, comment, voter, value):
+    def cast(cls, target, voter, value):
         """▲ (1) ya da ▼ (−1); aynı tuşa ikinci basış oyu geri alır. Yeni oyu (1, −1, 0) döndürür."""
         if value not in (1, -1):
             raise ValueError('Geçersiz oy.')
-        # Yorum satırını kilitle: aynı yoruma eşzamanlı oylar (ör. çift tık) sırayla işlensin, puan kaymasın.
-        comment = Comment.objects.select_for_update().get(pk=comment.pk)
-        if not voter.can_vote or comment.author_id == voter.pk or comment.is_deleted or not comment.target.is_open:
-            raise ValueError('Bu yoruma oy verilemez.')
-        old = cls.objects.filter(comment=comment, voter=voter).first()
+        # Hedef satırı kilitle: aynı hedefe eşzamanlı oylar (ör. çift tık) sırayla işlensin, puan kaymasın.
+        target = type(target).objects.select_for_update().get(pk=target.pk)
+        if not target.can_be_voted_by(voter):
+            raise ValueError('Buna oy verilemez.')
+        key = {cls.TARGET: target, 'voter': voter}
+        old = cls.objects.filter(**key).first()
         old_value = old.value if old else 0
         new = 0 if value == old_value else value
         if new:
-            cls.objects.update_or_create(comment=comment, voter=voter, defaults={'value': new})
+            cls.objects.update_or_create(**key, defaults={'value': new})
         elif old:
             old.delete()
-        Comment.objects.filter(pk=comment.pk).update(score=F('score') + new - old_value)  # atomik, sayım gerekmez
+        type(target).objects.filter(pk=target.pk).update(score=F('score') + new - old_value)  # atomik, sayım gerekmez
         return new
+
+
+class CommentVote(UpDownVote):
+    TARGET = 'comment'
+    comment = models.ForeignKey(Comment, models.CASCADE, related_name='votes')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['comment', 'voter'], name='yorum_tek_oy')]
