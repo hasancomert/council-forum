@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from accounts.models import User
+from comments.models import Commentable
 from topics.models import Topic
 
 
@@ -58,7 +59,7 @@ class Vote(models.Model):
         return vote
 
 
-class BaseProposal(models.Model):
+class BaseProposal(Commentable):
     """Ortak öneri iskeleti. Tip başına ayrı model kullanılıyor (Vote hariç), böylece her
     önerinin kendi hedef/payload alanları olur; oy/ağırlık/süre mantığı burada tekrar etmez.
     """
