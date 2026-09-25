@@ -5,7 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% if title %}{{ title }} · {% endif %}Forum</title>
   <style>
-    body { max-width: 48rem; margin: 0 auto; padding: 0 1rem; font-family: system-ui, sans-serif; line-height: 1.5; }
+    body { max-width: 68rem; margin: 0 auto; padding: 0 1rem; font-family: system-ui, sans-serif; line-height: 1.5; }
+    /* geniş ekranda panel sağda, dar ekranda içeriğin altında; min-width: 0 uzun bağlantı taşmasın */
+    .layout { display: grid; gap: 1.5rem; }
+    .layout > * { min-width: 0; }
+    @media (min-width: 60rem) { .layout { grid-template-columns: 1fr 18rem; } }
+    .panel h2 { font-size: 1.1rem; }
+    .panel ul { padding-left: 1rem; }
     form.inline { display: inline; }
     textarea { display: block; width: 100%; box-sizing: border-box; }
     .reply { margin-left: 2rem; }
@@ -34,6 +40,9 @@
   {% if messages %}
     <ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>
   {% endif %}
-  <main>{% block content %}{% endblock %}</main>
+  <div class="layout">
+    <main>{% block content %}{% endblock %}</main>
+    <aside>{% block aside %}{% endblock %}</aside>
+  </div>
 </body>
 </html>

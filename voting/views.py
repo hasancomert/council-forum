@@ -1,15 +1,13 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from topics.models import Topic
 
 from .forms import proposal_form
-from .models import PROPOSAL_MODELS, PROPOSALS, BaseProposal, TopicUndoProposal, Vote
+from .models import PROPOSALS, TopicUndoProposal, Vote, active_proposals
 
 
 def _model(slug):
@@ -18,12 +16,8 @@ def _model(slug):
     return PROPOSALS[slug]
 
 
-def proposal_list(request):  # 7. adımda ana sayfadaki yan panel olacak
-    open_now = {'status': BaseProposal.Status.VOTING, 'voting_ends_at__gt': timezone.now()}
-    # select_related(): boş bırakınca null olamayan tüm FK'leri (topic, target_user) tek sorguda getirir.
-    proposals = [p for model in PROPOSAL_MODELS
-                 for p in model.objects.filter(**open_now).select_related().annotate(participants=Count('votes'))]
-    proposals.sort(key=lambda p: p.voting_ends_at)
+def proposal_list(request):  # ana sayfa panelinin "tümü" sayfası
+    proposals = sorted(active_proposals(), key=lambda p: p.voting_ends_at)
     return render(request, 'voting/list.html', {'proposals': proposals, 'title': 'Açık öneriler'})
 
 

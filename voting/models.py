@@ -69,6 +69,7 @@ class BaseProposal(Commentable):
         REJECTED = 'rejected', 'Reddedildi'
         APPLIED = 'applied', 'Uygulandı'
 
+    in_discussion = False  # yalnızca istekte tartışma evresi var (RequestProposal property ile ezer)
     SLUG = ''  # URL'deki tip adı; PROPOSALS sözlüğü modeli bununla bulur
     TARGET = 'topic'  # formda URL'den gelen konunun yazılacağı alan (yoksa None)
     FORM_FIELDS = ()  # öneri formunda kullanıcının doldurduğu alanlar
@@ -102,6 +103,11 @@ class BaseProposal(Commentable):
     @property
     def kind(self):
         return self._meta.verbose_name  # şablonlar _meta'ya erişemez
+
+    @property
+    def deadline(self):
+        """İçinde bulunulan evrenin bitişi: tartışmadaki istekte oylamanın başlangıcı."""
+        return self.discussion_ends_at if self.in_discussion else self.voting_ends_at
 
     @property
     def is_open(self):
@@ -431,6 +437,16 @@ PROPOSAL_MODELS = (
     TopicUndoProposal, ExpertProposal, RequestProposal,
 )
 PROPOSALS = {model.SLUG: model for model in PROPOSAL_MODELS}
+
+
+def active_proposals():
+    """Oylaması (istekte tartışması) süren tüm öneriler, participants = katılım sayısı; tip başına 1 sorgu.
+    Açık öneriler sayfası ve ana sayfa paneli kullanır.
+    """
+    open_now = {'status': BaseProposal.Status.VOTING, 'voting_ends_at__gt': timezone.now()}
+    # select_related(): boş bırakınca null olamayan tüm FK'leri (topic, target_user) tek sorguda getirir.
+    return [p for model in PROPOSAL_MODELS
+            for p in model.objects.filter(**open_now).select_related().annotate(participants=Count('votes'))]
 
 
 def open_proposal_count(user):

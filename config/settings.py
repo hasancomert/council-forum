@@ -158,4 +158,7 @@ FORUM = {
     'POPULAR_DAYS': 7,  # "en popüler": son kaç günün etkinliği
     'POPULAR_WEIGHTS': {'comment': 3, 'vote': 1},  # yorum ve oy (yorum oyu + konu oyu) katsayıları
     'TOPICS_PER_PAGE': 20,  # konu listeleri
+    'PANEL_VOTING': 10,  # ana sayfa panelinde en fazla oylamadaki öneri
+    'PANEL_DISCUSSION': 5,  # panelde en fazla tartışmadaki istek
+    'PANEL_CACHE_SECONDS': 60,  # panelin herkes için aynı kısmı; 0 = önbellek yok
 }

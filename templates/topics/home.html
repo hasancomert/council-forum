@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% load voting %}
+{% block aside %}{% active_panel %}{% endblock %}
 {% block content %}
 {% if parent %}
   <h1><a href="{{ parent.get_absolute_url }}">{{ parent }}</a> alt konuları
