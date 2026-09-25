@@ -9,7 +9,7 @@ from django.utils import timezone
 from .models import User
 
 FORM = {'username': 'ali', 'first_name': 'Ali', 'last_name': 'Veli', 'email': 'Ali@Example.com',
-        'password1': 'uzun-bir-sifre-42', 'password2': 'uzun-bir-sifre-42'}
+        'password1': 'uzun-bir-sifre-42', 'password2': 'uzun-bir-sifre-42', 'terms': 'on'}
 
 
 @patch('accounts.forms.turnstile_ok', return_value=True)  # testte Cloudflare'e gidilmez
@@ -27,6 +27,13 @@ class SignupTests(TestCase):
         user.refresh_from_db()
         self.assertTrue(user.is_active)
         self.assertEqual(self.client.get(link).status_code, 400)  # bağlantı tek kullanımlık
+
+    def test_terms_required_and_acceptance_time_saved(self, _):
+        self.assertContains(self.signup(terms=''), 'Bu alan zorunludur')
+        self.assertFalse(User.objects.exists())
+        self.signup()
+        accepted = User.objects.get().terms_accepted_at
+        self.assertGreater(accepted, timezone.now() - timedelta(minutes=1))
 
     def test_captcha_required(self, captcha):
         captcha.return_value = False
@@ -65,3 +72,15 @@ class VoteTests(TestCase):
         self.assertFalse(user.can_post or user.can_vote)
         user.banned_until = timezone.now() - timedelta(seconds=1)  # süre doldu, alan temizlenmeden kalkar
         self.assertTrue(user.can_post and user.can_vote)
+
+
+class LegalPageTests(TestCase):
+    def test_pages_linked_from_footer_and_use_settings(self):
+        home = self.client.get('/')
+        for url in ('/kullanim-sartlari/', '/kvkk/', '/cerezler/', '/iletisim/'):
+            self.assertContains(home, f'href="{url}"')
+            self.assertContains(self.client.get(url), 'hukuk uzmanı kontrolü gerekir')
+        self.assertContains(self.client.get('/iletisim/'), settings.SITE['email'])  # 5651 tanıtıcı bilgi
+        terms = self.client.get('/kullanim-sartlari/')  # kural sayıları metne ayardan gelir
+        self.assertContains(terms, f"oy ağırlığı {settings.FORUM['VOTE_WEIGHT']['B']}")
+        self.assertContains(terms, f"%{settings.FORUM['QUORUM_PERCENT']}")

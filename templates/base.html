@@ -40,6 +40,10 @@
     <aside>{% block aside %}{% endblock %}</aside>
   </div>
   <footer class="foot">
+    <a href="{% url 'terms' %}">Kullanım şartları</a>
+    <a href="{% url 'privacy' %}">KVKK</a>
+    <a href="{% url 'cookies' %}">Çerezler</a>
+    <a href="{% url 'contact' %}">İletişim</a>
     <a href="{% url 'mod_log' %}">Moderasyon kaydı</a>
     <a href="{% url 'archive' %}">Silinen konular</a>
   </footer>

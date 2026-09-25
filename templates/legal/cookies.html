@@ -1,0 +1,15 @@
+{% extends "legal/base.html" %}
+{% block text %}
+<p>Bu site yalnızca çalışması için zorunlu çerezleri kullanır. Reklam, analiz ya da izleme çerezi yoktur; bu yüzden
+  çerez onayı istenmez.</p>
+<ul class="list">
+  <li><strong>sessionid</strong> — giriş yaptığında oturumunu tanır. Çıkışta ya da 2 hafta sonra silinir.</li>
+  <li><strong>csrftoken</strong> — formların başka bir siteden senin adına gönderilmesini engeller (güvenlik). 1 yıl.</li>
+  <li><strong>messages</strong> — bir işlemden sonra gösterilen kısa bildirim ("Öneri açıldı." gibi). Gösterilince silinir.</li>
+  <li><strong>Cloudflare Turnstile</strong> — yalnızca kayıt sayfasında, robot denetimi için Cloudflare'in kendi
+    çerez ya da yerel depolama kullanımı.</li>
+  <li><strong>Uygulama önbelleği</strong> — siteyi uygulama olarak yüklersen tarayıcın stil ve betik dosyalarını ve
+    çevrimdışı sayfasını saklar. Sayfaların içeriği ve kişisel bilgilerin saklanmaz.</li>
+</ul>
+<p>Çerezleri tarayıcının ayarlarından silebilirsin; o zaman yeniden giriş yapman gerekir.</p>
+{% endblock %}

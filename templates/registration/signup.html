@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Kayıt ol</h1>
+<p>Kayıt olmadan önce <a href="{% url 'terms' %}">kullanım şartlarını</a> oku. Kişisel verilerinin nasıl işlendiği
+  <a href="{% url 'privacy' %}">KVKK aydınlatma metninde</a>.</p>
 <form method="post">{% csrf_token %}
   {{ form }}
   <div class="cf-turnstile" data-sitekey="{{ site_key }}"></div>

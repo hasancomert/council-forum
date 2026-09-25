@@ -1,0 +1,23 @@
+{% extends "legal/base.html" %}
+{% block text %}
+<h2>Künye</h2>
+<p>5651 sayılı Kanun'un 3. maddesi uyarınca tanıtıcı bilgiler:</p>
+<ul>
+  <li>İçerik ve yer sağlayıcı: {{ site.owner }}</li>
+  <li>Adres: {{ site.address }}</li>
+  <li>E-posta: <a href="mailto:{{ site.email }}">{{ site.email }}</a></li>
+</ul>
+
+<h2>Hukuka aykırı içerik bildirimi</h2>
+<p>Üyeysen içeriğin yanındaki "Şikayet et" bağlantısını kullanabilirsin; şikayetin yöneticilere gider, kimliğin
+  gizli kalır. Kişilik haklarını ya da özel hayatını ihlal eden bir içerik, fikri mülkiyet ihlali ya da bir mahkeme
+  veya idari karar için <a href="mailto:{{ site.email }}">{{ site.email }}</a> adresine içeriğin bağlantısını ve
+  gerekçeni yaz. Bildirimler incelenir; yetkili mercilerin kararları yasal süreler içinde uygulanır.</p>
+
+<h2>Kişisel veri başvuruları</h2>
+<p>KVKK kapsamındaki hakların için <a href="{% url 'privacy' %}">aydınlatma metnindeki</a> yolla başvurabilirsin.</p>
+
+<h2>Moderasyon itirazı</h2>
+<p>Bir moderasyon işlemine (gizleme, engel, hesap kapatma) itiraz için işlemin
+  <a href="{% url 'mod_log' %}">moderasyon kaydındaki</a> tarihini ve gerekçeni aynı adrese yaz.</p>
+{% endblock %}

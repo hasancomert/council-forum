@@ -23,6 +23,7 @@ def signup(request):
     if form.is_valid():
         user = form.save(commit=False)
         user.is_active = False  # e-posta doğrulanana kadar giriş yapamaz
+        user.terms_accepted_at = timezone.now()  # zorunlu kutu: kabul anı saklanır
         user.save()
         uid = urlsafe_base64_encode(str(user.pk).encode())
         token = default_token_generator.make_token(user)

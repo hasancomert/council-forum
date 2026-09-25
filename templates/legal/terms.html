@@ -1,0 +1,78 @@
+{% extends "legal/base.html" %}
+{% block text %}
+<p>Bu site {{ site.owner }} tarafından işletilen, kararların üyelerin oylamasıyla verildiği bir forumdur. Üye olan
+  herkes bu şartları kabul etmiş sayılır. Kişisel verilerin nasıl işlendiği
+  <a href="{% url 'privacy' %}">KVKK aydınlatma metninde</a>.</p>
+
+<h2>1. Üyelik</h2>
+<ul>
+  <li>Kayıt için ad, soyad, takma ad, e-posta ve şifre gerekir; e-posta doğrulanmadan hesap açılmaz.</li>
+  <li>Herkese yalnızca takma adın görünür. Adın, soyadın ve e-postan hiçbir sayfada gösterilmez.</li>
+  <li>Bir kişi tek hesap açar. Sahte ya da birden çok hesap yasaktır; açıkça sahte olan hesabı yönetici kapatır.</li>
+  <li>Oy vermek, öneri açmak ve şikayet etmek için hesap en az {{ forum.MIN_ACCOUNT_AGE_DAYS }} günlük olmalıdır.
+    Yorum yazmak için bu süre gerekmez.</li>
+</ul>
+
+<h2>2. Roller</h2>
+<ul>
+  <li><strong>Üye (A):</strong> karar oylamalarında oy ağırlığı {{ forum.VOTE_WEIGHT.A }}.</li>
+  <li><strong>Bilirkişi (B):</strong> karar oylamalarında oy ağırlığı {{ forum.VOTE_WEIGHT.B }}. Gerekçeli başvuru ve
+    topluluk oylamasıyla verilir, aynı yolla geri alınır; bu oylamada herkesin oyu 1 sayılır ve
+    {{ forum.EXPERT_APPROVAL_NUM }}/{{ forum.EXPERT_APPROVAL_DEN }} evet gerekir. Yorum oylarında (▲/▼) herkesin oyu 1'dir.</li>
+  <li><strong>Yönetici:</strong> yalnızca moderasyon yapar (trol, aşırı içerik, sahte hesap); başka hiçbir karara karışmaz.</li>
+</ul>
+
+<h2>3. Kararlar nasıl verilir</h2>
+<ul>
+  <li>Konu ve alt konu açma, düzenleme, kapatma, silme ve bunları geri alma oylamayla olur. İlk ana konuları kurucu açar.</li>
+  <li>Öneriler {{ forum.PROPOSAL_VOTING_DAYS }} gün oylanır; tartışma oylama sırasında öneri sayfasında yapılır.
+    Konulardan doğan istekler {{ forum.REQUEST_DISCUSSION_DAYS }} gün tartışılır, sonra {{ forum.REQUEST_VOTING_DAYS }} gün oylanır.</li>
+  <li>Yeter sayı: son {{ forum.ACTIVE_DAYS }} günde etkin üyelerin %{{ forum.QUORUM_PERCENT }}'u, en az
+    {{ forum.QUORUM_MIN }} kişi. Ağırlıklı oyların yarısından fazlası evetse öneri kabul edilir; eşitlikte mevcut durum korunur.</li>
+  <li>Kimin ne oy verdiği gizlidir. Oylama sürerken yalnızca katılım sayısı görünür, sonuç bitince açıklanır; o zamana
+    kadar oyunu değiştirebilirsin.</li>
+  <li>Aynı anda en fazla {{ forum.MAX_OPEN_PROPOSALS }} açık önerin olabilir. Reddedilen öneri
+    {{ forum.REJECTED_COOLDOWN_DAYS }} gün yeniden açılamaz.</li>
+  <li>Kapatılan konu görünür kalır ama yeni yorum ve öneri almaz. Silinen içerik gizlenir, veritabanından silinmez. İkisi de
+    oylamayla geri alınabilir.</li>
+</ul>
+
+<h2>4. Topluluk kuralları</h2>
+<p>Şunlar yasaktır:</p>
+<ul>
+  <li>Trollük: tartışmayı bilerek sabote etmek, kışkırtmak, aynı içeriği tekrar tekrar göndermek, reklam ve spam.</li>
+  <li>Aşırı içerik: hakaret, tehdit, nefret söylemi, şiddeti övme, müstehcenlik, suç teşkil eden ya da başkasının
+    haklarını (kişilik hakları, fikri mülkiyet) ihlal eden içerik.</li>
+  <li>Başkasının kişisel verilerini (adres, telefon, kimlik bilgisi vb.) izinsiz paylaşmak.</li>
+  <li>Sahte hesap açmak ya da oylamayı birden çok hesapla etkilemeye çalışmak.</li>
+</ul>
+<p>Sağlık, siyasi görüş, inanç gibi özel nitelikli kişisel verilerini paylaşmaman önerilir: paylaştığın içerik herkese açıktır.</p>
+
+<h2>5. Moderasyon ilkeleri</h2>
+<ul>
+  <li>Yönetici yalnızca kural ihlalinde işlem yapar ve her işlemde gerekçe (trollük, aşırı içerik, sahte hesap) ile
+    herkese açık bir not yazar. Bütün işlemler <a href="{% url 'mod_log' %}">moderasyon kaydında</a> herkese açıktır;
+    kayıt değiştirilemez ve silinemez.</li>
+  <li>Gizlenen içerik silinmez; metnini yalnızca sahibi ve yöneticiler görür. Süren bir öneri gizlenirse oylaması iptal olur.</li>
+  <li>Engelleme süreleri: {{ forum.BAN_DAYS|join:", " }} gün. Engelli üye okuyabilir, kendi yorumunu silebilir; yazamaz,
+    oy veremez, öneri açamaz. Kalıcı engel yoktur.</li>
+  <li>Hesap yalnızca sahte hesap gerekçesiyle kapatılır: süren oylamalardaki oyları geri çekilir, açık önerileri iptal olur.</li>
+  <li>Şikayetler yöneticilere gider, içerik kendiliğinden gizlenmez. Şikayet edenin kimliği hiçbir yerde görünmez.</li>
+  <li>Bir moderasyon işlemine itiraz için <a href="{% url 'contact' %}">iletişim</a> adresine yazabilirsin.</li>
+</ul>
+
+<h2>6. İçerik sorumluluğu</h2>
+<p>Yazdığın içerikten sen sorumlusun. Site, üyelerin içerikleri bakımından 5651 sayılı Kanun'daki yer sağlayıcıdır:
+  içerikleri önceden denetlemez; hukuka aykırı içerik kendisine bildirildiğinde ya da bir mahkeme veya idari karar
+  ulaştığında gerekli işlemi yapar. Bildirim yolları <a href="{% url 'contact' %}">iletişim</a> sayfasındadır.</p>
+
+<h2>7. Hesabın silinmesi</h2>
+<p>Hesabını istediğin zaman "Hesabım" sayfasından silebilirsin. Adın, soyadın, e-postan, takma adın ve şifren silinir;
+  hesabın "silinmiş üye" olur. İstersen yorumlarının metni de silinir, yerinde "Bu yorum silindi" yazar. Açtığın konu ve
+  öneriler topluluk kararlarının parçası olduğu için anonim olarak kalır. Bitmiş oylamalardaki oyların sonuçları
+  değiştirmemek için sayılmaya devam eder; süren oylamalardaki oyların ve açık önerilerin geri çekilir. Yasal saklama
+  süresi olan kayıtlar (trafik bilgisi) o süre bitince silinir.</p>
+
+<h2>8. Değişiklikler ve uygulanacak hukuk</h2>
+<p>Bu şartlar değişirse güncel metin bu sayfada yayımlanır. Bu şartlara Türkiye Cumhuriyeti hukuku uygulanır.</p>
+{% endblock %}

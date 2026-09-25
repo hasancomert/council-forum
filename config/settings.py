@@ -57,7 +57,7 @@ load_env(BASE_DIR / '.env')
 DEBUG = env_bool('DEBUG')  # yoksa False: unutulan ayar yayında hata ayıklama sayfası açmasın
 
 
-def secret(name, dev_default):
+def required(name, dev_default):
     """Yayında zorunlu değer; yalnızca geliştirmede (DEBUG) yoksa dev_default kullanılır."""
     value = os.environ.get(name) or (dev_default if DEBUG else '')
     if not value:
@@ -65,7 +65,7 @@ def secret(name, dev_default):
     return value
 
 
-SECRET_KEY = secret('SECRET_KEY', 'django-insecure-yalnizca-gelistirme')
+SECRET_KEY = required('SECRET_KEY', 'django-insecure-yalnizca-gelistirme')
 ALLOWED_HOSTS = env_list('ALLOWED_HOSTS')  # DEBUG'da boşsa localhost geçer
 CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')  # yalnızca başka bir alan adından form gelecekse
 
@@ -188,8 +188,15 @@ LOGIN_REDIRECT_URL = LOGOUT_REDIRECT_URL = 'home'
 
 # Cloudflare Turnstile (CAPTCHA). Geliştirmede Cloudflare'in her zaman geçen test anahtarları;
 # yayında gerçekleri zorunlu (unutulursa test anahtarı sessizce herkesi geçirmesin).
-TURNSTILE_SITE_KEY = secret('TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
-TURNSTILE_SECRET_KEY = secret('TURNSTILE_SECRET_KEY', '1x0000000000000000000000000000000AA')
+TURNSTILE_SITE_KEY = required('TURNSTILE_SITE_KEY', '1x00000000000000000000AA')
+TURNSTILE_SECRET_KEY = required('TURNSTILE_SECRET_KEY', '1x0000000000000000000000000000000AA')
+
+# 5651 md. 3 tanıtıcı bilgiler ve KVKK veri sorumlusu: iletişim sayfasında ve hukuki metinlerde görünür.
+SITE = {
+    'owner': required('SITE_OWNER', 'Ad Soyad (geliştirme)'),  # gerçek kişiyse ad soyad, şirketse unvan
+    'address': required('CONTACT_ADDRESS', 'Adres (geliştirme)'),
+    'email': required('CONTACT_EMAIL', 'iletisim@example.com'),  # hukuki bildirim ve KVKK başvurusu
+}
 
 # Forum kuralları (CLAUDE.md > Kurallar). Kural sayıları yalnızca burada tutulur.
 FORUM = {

@@ -19,7 +19,8 @@ from .settings import BASE_DIR, database, env_list, load_env
 # Yayın ortamı: .env'deki geliştirme değerleri (DEBUG=1) bunları ezemez, gerçek ortam değişkeni önceliklidir.
 PROD = {'DEBUG': '0', 'SECRET_KEY': get_random_secret_key(), 'ALLOWED_HOSTS': 'forum.example',
         'EMAIL_HOST': 'smtp.example', 'TURNSTILE_SITE_KEY': 'site', 'TURNSTILE_SECRET_KEY': 'gizli',
-        'DATABASE_URL': '', 'HSTS_SECONDS': ''}
+        'DATABASE_URL': '', 'HSTS_SECONDS': '', 'SITE_OWNER': 'Ad Soyad', 'CONTACT_ADDRESS': 'Adres',
+        'CONTACT_EMAIL': 'iletisim@forum.example'}
 
 
 def manage(*args, **env):

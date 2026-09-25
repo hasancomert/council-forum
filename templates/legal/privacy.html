@@ -1,0 +1,64 @@
+{% extends "legal/base.html" %}
+{% block text %}
+<p>6698 sayılı Kişisel Verilerin Korunması Kanunu'nun (KVKK) 10. maddesi uyarınca, kişisel verilerinin hangi amaçla,
+  hangi hukuki sebeple ve ne kadar süre işlendiğini aşağıda bulabilirsin.</p>
+
+<h2>Veri sorumlusu</h2>
+<p>{{ site.owner }}, {{ site.address }}. E-posta: <a href="mailto:{{ site.email }}">{{ site.email }}</a></p>
+
+<h2>Hangi verileri, neden ve ne kadar süre tutuyoruz</h2>
+<ul class="list">
+  <li><strong>Hesap bilgileri:</strong> ad, soyad, e-posta, takma ad, şifre (yalnızca geri çevrilemez özeti), kayıt ve son
+    giriş tarihi, rol (A/B), yönetici ve engel bilgisi.<br>
+    <small>Amaç: üyelik, giriş, e-posta doğrulama, şifre sıfırlama, oy ağırlığı. Hukuki sebep: sözleşmenin kurulması ve
+      ifası (md. 5/2-c). Süre: hesap silinene kadar. E-postası 3 gün içinde doğrulanmayan hesap silinir. Yalnızca takma ad
+      herkese açıktır.</small></li>
+  <li><strong>Şartları kabul tarihi.</strong><br>
+    <small>Amaç: kabulün ispatı. Hukuki sebep: bir hakkın tesisi ve korunması (md. 5/2-e). Süre: hesap silinene kadar.</small></li>
+  <li><strong>İçerik ve etkileşimler:</strong> konular, öneriler, yorumlar, karar oyları, ▲/▼ oyları, şikayetler.<br>
+    <small>Amaç: forumun işlemesi ve kararların kaydı. Hukuki sebep: md. 5/2-c. İçerikler herkese açıktır; kimin ne oy
+      verdiği ve kimin şikayet ettiği hiçbir sayfada gösterilmez. Süre: süresiz (kapatılan ve silinen içerik de kayıtta
+      kalır). Hesap silinince bu kayıtlar anonimleşir; istersen yorumlarının metni de silinir.</small></li>
+  <li><strong>Moderasyon kaydı:</strong> işlemin tarihi, türü, gerekçesi, notu, yöneticinin ve etkilenen üyenin takma adı.<br>
+    <small>Amaç: şeffaflık ve hakların korunması. Hukuki sebep: md. 5/2-e ve meşru menfaat (md. 5/2-f). Herkese açıktır.
+      Süre: süresiz; hesap silinince takma ad yerine "silinmiş üye" görünür.</small></li>
+  <li><strong>Trafik bilgisi:</strong> IP adresi, bağlantı tarihi ve saati, istenen sayfa, işlem (GET/POST), sonuç ve
+    tarayıcı bilgisi.<br>
+    <small>Amaç: 5651 sayılı Kanun'un yer sağlayıcıya yüklediği saklama yükümlülüğü ve güvenlik. Hukuki sebep: hukuki
+      yükümlülük (md. 5/2-ç). Süre: en az 1 yıl saklanır, 400 gün sonra kendiliğinden silinir. Yalnızca yetkili
+      mercilerin talebiyle paylaşılır.</small></li>
+  <li><strong>Hata kayıtları:</strong> bir hata anında istenen adres, takma ad ve IP adresi.<br>
+    <small>Amaç: hataları gidermek. Hukuki sebep: meşru menfaat (md. 5/2-f). Süre: 30 gün.</small></li>
+  <li><strong>Yedekler:</strong> veritabanının günlük kopyası.<br>
+    <small>Amaç: veri kaybını önlemek. Hukuki sebep: md. 5/2-f. Süre: 30 gün.</small></li>
+  <li><strong>Çerezler:</strong> yalnızca sitenin çalışması için gerekli olanlar; ayrıntısı
+    <a href="{% url 'cookies' %}">çerez bilgisi</a> sayfasında.</li>
+</ul>
+
+<h2>Kimlere aktarılır</h2>
+<ul>
+  <li><strong>Sunucu sağlayıcısı (Türkiye):</strong> site ve veritabanı Türkiye'deki bir sunucuda barındırılır; sağlayıcı
+    veri işleyen olarak yalnızca barındırma hizmeti verir.</li>
+  <li><strong>Cloudflare, Inc. (ABD):</strong> kayıt sayfasındaki robot denetimi (Turnstile) için IP adresin ve tarayıcı
+    bilgilerin Cloudflare'e gider. Amaç sahte hesapları önlemektir (meşru menfaat). Yurt dışına aktarım KVKK md. 9
+    uyarınca standart sözleşmeyle yapılır.</li>
+  <li><strong>E-posta gönderim sağlayıcısı:</strong> doğrulama ve şifre sıfırlama e-postaları için e-posta adresin ve
+    e-postanın içeriği. Sağlayıcı yurt dışındaysa aktarım md. 9 uyarınca standart sözleşmeyle yapılır.</li>
+  <li><strong>Yetkili kurum ve mahkemeler:</strong> yalnızca kanunun gerektirdiği hâllerde ve talep üzerine.</li>
+</ul>
+<p>Veriler reklam, profil çıkarma ya da pazarlama için kullanılmaz ve satılmaz.</p>
+
+<h2>Toplama yöntemi</h2>
+<p>Kayıt formu ve sitenin kullanımı sırasında (formlar, oylar) senin verdiğin bilgilerle; trafik bilgisi ve çerezler
+  için sunucu tarafından otomatik olarak.</p>
+
+<h2>Hakların (KVKK md. 11)</h2>
+<p>Kişisel verilerinin işlenip işlenmediğini öğrenme, bilgi isteme, işleme amacını ve amacına uygun kullanılıp
+  kullanılmadığını öğrenme, aktarıldığı kişileri bilme, eksik ya da yanlış işlenmişse düzeltilmesini, KVKK md. 7'deki
+  şartlarla silinmesini ya da yok edilmesini ve bunların aktarıldığı kişilere bildirilmesini isteme, münhasıran
+  otomatik sistemlerle analiz edilmesi sonucu aleyhine bir sonuca itiraz etme ve kanuna aykırı işleme nedeniyle zarara
+  uğrarsan zararın giderilmesini isteme hakların var.</p>
+<p>Başvurunu, sitede kayıtlı e-posta adresinden <a href="mailto:{{ site.email }}">{{ site.email }}</a> adresine ya da
+  yazılı olarak yukarıdaki adrese iletebilirsin. Başvurular en geç 30 gün içinde ücretsiz yanıtlanır.
+  Hesabını "Hesabım" sayfasından kendin de silebilirsin.</p>
+{% endblock %}

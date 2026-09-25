@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{# Hukuki metinlerin ortak kalıbı. Uzman kontrolünden sonra taslak notu buradan kaldırılır. #}
+{% block content %}
+<article class="legal">
+  <h1>{{ title }}</h1>
+  <p class="notice">Taslak: hukuk uzmanı kontrolü gerekir. Son güncelleme: 25 Eylül 2026.</p>
+  {% block text %}{% endblock %}
+</article>
+{% endblock %}

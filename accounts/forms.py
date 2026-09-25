@@ -20,6 +20,9 @@ def turnstile_ok(token):
 
 
 class SignupForm(UserCreationForm):
+    # Yalnızca şartların kabulü: KVKK aydınlatması onay değil bilgilendirmedir, şarta bağlanmaz (şablonda bağlantı).
+    terms = forms.BooleanField(label='Kullanım şartlarını okudum, kabul ediyorum.')
+
     class Meta(UserCreationForm.Meta):
         model = User
         fields = ('username', 'first_name', 'last_name', 'email')

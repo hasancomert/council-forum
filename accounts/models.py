@@ -25,6 +25,7 @@ class User(AbstractUser):
     role = models.CharField('rol', max_length=1, choices=Role, default=Role.MEMBER)
     is_moderator = models.BooleanField('yönetici', default=False)  # moderasyon sitede yapılır, admin'e girmez
     banned_until = models.DateTimeField('engel bitişi', null=True, blank=True)  # yalnızca moderasyonla değişir
+    terms_accepted_at = models.DateTimeField('şartları kabul', null=True, editable=False)  # kayıtta; kurucuda boş
 
     REQUIRED_FIELDS = ['email', 'first_name', 'last_name']  # createsuperuser da sorsun
 

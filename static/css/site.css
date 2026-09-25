@@ -154,6 +154,11 @@ label:has(> input[type=checkbox], > input[type=radio]) {
   min-height: var(--tap);
   font-weight: normal;
 }
+/* {{ form }}'daki tek onay kutusu etiketin ardından gelir: kutu öne, etiket geniş dokunma alanı */
+form > div:has(> input[type=checkbox]) { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--s2); }
+form > div:has(> input[type=checkbox]) > input { order: -1; }
+form > div:has(> input[type=checkbox]) > label { display: inline-flex; flex: 1; align-items: center; min-height: var(--tap); font-weight: normal; }
+form > div:has(> input[type=checkbox]) > .errorlist { order: 1; flex-basis: 100%; }
 .helptext { display: block; color: var(--muted); font-size: var(--fs-sm); }
 .errorlist { margin: var(--s1) 0; padding: 0; list-style: none; color: var(--danger); }
 form.inline { display: inline; }
@@ -252,6 +257,11 @@ details form textarea { flex-basis: 100%; }
 /* Sayfalama */
 .pages { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s2); margin: var(--s3) 0; }
 .pages a { display: inline-flex; align-items: center; min-height: var(--tap); padding: 0 var(--s3); border: 1px solid var(--line); border-radius: var(--radius); text-decoration: none; }
+
+/* Hukuki metinler: satır uzunluğu okunaklı kalsın */
+.legal { max-width: 46rem; }
+.legal ul:not(.list) { padding-left: var(--s4); }
+.legal li { margin-bottom: var(--s2); }
 
 /* Hata ve çevrimdışı sayfaları */
 .error-page { padding: var(--s4) 0; }
