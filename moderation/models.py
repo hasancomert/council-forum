@@ -32,6 +32,11 @@ class Hideable(models.Model):
         self.is_hidden = hidden
         self.save(update_fields=['is_hidden'])
 
+    def can_be_reported_by(self, user):
+        """Şikayet: oy hakkı gerekir (kural 1); kendi, gizli ya da silinmiş içerik şikayet edilmez."""
+        return (user.is_authenticated and user.can_vote and self.owner_id != user.pk and not self.is_hidden
+                and not getattr(self, 'is_deleted', False))
+
 
 class ModAction(models.Model):
     """Herkese açık moderasyon kaydı. Yalnızca eklenir: değiştirilemez, silinemez; kayıttaki üyeler de
@@ -75,3 +80,20 @@ class ModAction(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValueError('Moderasyon kaydı silinemez.')
+
+
+class Report(models.Model):
+    """Şikayet: içerik kendiliğinden gizlenmez, yöneticinin kuyruğuna düşer. Şikayet edenin kimliği gizli:
+    yalnızca "içerik başına tek şikayet" ve hız sınırı için tutulur; hiçbir sayfada ve admin'de görünmez.
+    """
+    content_type = models.ForeignKey(ContentType, models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    target = GenericForeignKey()
+    reporter = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_open = models.BooleanField(default=True)  # gizleme ya da "şikayetleri kapat" kapatır
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['content_type', 'object_id', 'reporter'], name='icerik_basina_tek_sikayet'),
+        ]

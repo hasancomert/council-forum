@@ -1,9 +1,11 @@
 from datetime import timedelta
 
+from django.conf import settings
+from django.contrib import admin
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.db.models import ProtectedError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from accounts.models import User
@@ -14,14 +16,14 @@ from voting.models import (
 )
 from voting.tests import make_user
 
-from .models import ModAction
+from .models import ModAction, Report
 
 S = BaseProposal.Status
 NOTE = {'reason': 'troll', 'note': 'Kurala aykırı.'}
 
 
-def mod_url(obj):
-    return f'/mod/{ContentType.objects.get_for_model(obj).pk}/{obj.pk}/'
+def mod_url(obj, prefix='mod'):
+    return f'/{prefix}/{ContentType.objects.get_for_model(obj).pk}/{obj.pk}/'
 
 
 def make_moderator(name='yonetici'):
@@ -222,3 +224,59 @@ class ActionTests(ModTestCase):
         self.assertNotContains(self.client.get('/mod/log/?kind=ban'), 'Hakaret içeriyor.')
         r = self.client.get(f'/r/{ContentType.objects.get_for_model(c).pk}/{c.pk}/')  # kayıttaki bağlantı
         self.assertTrue(r['Location'].endswith(c.get_absolute_url()))
+
+
+class ReportTests(ModTestCase):
+    def report(self, obj, user):
+        self.login(user)
+        return self.client.post(mod_url(obj, 'report'), follow=True)
+
+    def test_who_can_report_and_only_once(self):
+        c = Comment.objects.create(target=self.topic, author=self.alice, body='x')
+        self.assertEqual(self.report(c, make_user('yeni', days=1)).status_code, 403)  # oy hakkı gerekir
+        self.assertEqual(self.report(c, self.alice).status_code, 403)  # kendi içeriği
+        self.assertContains(self.report(c, self.bob), 'yöneticilere iletildi')
+        self.assertContains(self.report(c, self.bob), 'zaten şikayet ettin')  # içerik başına bir şikayet
+        self.assertEqual(Report.objects.count(), 1)
+        c.set_hidden(True)
+        self.assertEqual(self.report(c, make_user('carol')).status_code, 403)  # gizli içerik şikayet edilmez
+        self.assertFalse(admin.site.is_registered(Report))
+
+    @override_settings(FORUM={**settings.FORUM, 'REPORT_RATE': (2, 60)})
+    def test_report_rate_limit(self):
+        comments = [Comment.objects.create(target=self.topic, author=self.alice, body=str(i)) for i in range(3)]
+        for c in comments:
+            r = self.report(c, self.bob)
+        self.assertContains(r, 'Çok sık şikayet')
+        self.assertEqual(Report.objects.count(), 2)
+
+    def test_queue_most_reported_first_reporters_hidden(self):
+        once = Comment.objects.create(target=self.topic, author=self.alice, body='Bir kez')
+        twice = Comment.objects.create(target=self.topic, author=self.alice, body='İki kez')
+        reporters = [make_user('ihbarci1'), make_user('ihbarci2')]
+        self.report(once, reporters[0])
+        for user in reporters:
+            self.report(twice, user)
+        self.login(self.bob)
+        self.assertEqual(self.client.get('/mod/').status_code, 403)
+        self.login(self.mod)
+        r = self.client.get('/mod/')
+        html = r.content.decode()
+        self.assertLess(html.index('İki kez'), html.index('Bir kez'))
+        self.assertContains(r, '2 şikayet')
+        self.assertNotContains(r, 'ihbarci')  # şikayet edenin kimliği gizli
+        self.assertNotContains(self.client.get(mod_url(twice)), 'ihbarci')
+
+    def test_hiding_closes_reports_dismiss_does_not_hide(self):
+        a = Comment.objects.create(target=self.topic, author=self.alice, body='Gizlenecek')
+        b = Comment.objects.create(target=self.topic, author=self.alice, body='Yersiz şikayet')
+        for c in (a, b):
+            self.report(c, self.bob)
+        self.login(self.mod)
+        self.client.post(mod_url(a), NOTE)
+        self.client.post(mod_url(b), {'dismiss': '1'})
+        b.refresh_from_db()
+        self.assertFalse(Report.objects.filter(is_open=True).exists())
+        self.assertFalse(b.is_hidden)
+        self.assertEqual(ModAction.objects.count(), 1)  # şikayet kapatmak kayda düşmez
+        self.assertContains(self.client.get('/mod/'), 'Açık şikayet yok.')

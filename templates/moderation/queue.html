@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Şikayetler</h1>
+<p>Açık şikayetler; en çok şikayet alan önce. İçerik kendiliğinden gizlenmez, şikayet edenler görünmez.</p>
+<ul>
+  {% for i in items %}
+    <li>
+      <strong>{{ i.n }} şikayet</strong> · {{ i.since|timesince }} önce
+      {% if i.target %}
+        · {{ i.kind|capfirst }}: {{ i.target }} · {{ i.target.owner|default:"silinmiş üye" }}
+        · <a href="{% url 'goto' i.content_type i.object_id %}">sayfası</a>
+        · <a href="{% url 'mod_content' i.content_type i.object_id %}">incele</a>
+      {% else %}
+        · içerik bulunamadı
+      {% endif %}
+    </li>
+  {% empty %}
+    <li>Açık şikayet yok.</li>
+  {% endfor %}
+</ul>
+{% include "_pages.html" %}
+{% endblock %}

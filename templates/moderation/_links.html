@@ -1,1 +1,10 @@
-{% if user.is_moderator %}<a href="{% url 'mod_content' ct obj.pk %}">moderasyon{% if obj.is_hidden %} (gizli){% endif %}</a>{% endif %}
+{% if user.is_moderator %}
+  <a href="{% url 'mod_content' ct obj.pk %}">moderasyon{% if obj.is_hidden %} (gizli){% endif %}</a>
+{% elif can_report %}
+  <details><summary>Şikayet et</summary>
+    <form method="post" action="{% url 'report' ct obj.pk %}">{% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      Yöneticilere iletilir; kimliğin gizli kalır. <button>Şikayet et</button>
+    </form>
+  </details>
+{% endif %}

@@ -1,25 +1,28 @@
+from collections import defaultdict
 from datetime import timedelta
 from functools import wraps
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Min, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from accounts.models import User
 from comments.models import CommentVote
-from config.utils import get_target
+from config.utils import back, get_target, over_limit
 from topics.models import TopicVote
 from voting.models import PANEL_CACHE_KEY, withdraw_running
 
 from .forms import ActionForm, UserActionForm
-from .models import Hideable, ModAction
+from .models import Hideable, ModAction, Report
 
 Kind = ModAction.Kind
 ROW = ('moderator', 'user', 'content_type')  # kayıt satırının (_action.html) ilişkileri: satır başına sorgu yok
@@ -48,11 +51,49 @@ def _log(request, form, **fields):
 
 
 @moderator_required
+def queue(request):
+    """Açık şikayetler içerik başına toplanır: en çok şikayet alan önce, eşitse eskisi. Şikayet edenler görünmez."""
+    groups = (Report.objects.filter(is_open=True).values('content_type', 'object_id')
+              .annotate(n=Count('pk'), since=Min('created_at')).order_by('-n', 'since'))
+    page = Paginator(groups, settings.FORUM['MOD_PER_PAGE']).get_page(request.GET.get('page'))
+    ids = defaultdict(list)  # içerikler tip başına tek sorguyla gelir
+    for g in page:
+        ids[g['content_type']].append(g['object_id'])
+    found = {}
+    for ct, pks in ids.items():
+        model = ContentType.objects.get_for_id(ct).model_class()
+        found |= {(ct, o.pk): o for o in model.objects.filter(pk__in=pks).select_related(model.OWNER)}
+    items = [g | {'target': found.get((g['content_type'], g['object_id'])),
+                  'kind': ContentType.objects.get_for_id(g['content_type']).name} for g in page]
+    return render(request, 'moderation/queue.html', {'page': page, 'items': items, 'title': 'Şikayetler'})
+
+
+@login_required
+@require_POST
+def report(request, ct, pk):
+    target = get_target(ct, pk, Hideable)
+    if not target.can_be_reported_by(request.user):
+        raise PermissionDenied
+    if over_limit(Report.objects.filter(reporter=request.user), 'REPORT_RATE'):
+        messages.error(request, 'Çok sık şikayet ediyorsun, biraz bekle.')
+    else:  # içerik başına tek şikayet (veritabanında da UniqueConstraint)
+        _, created = Report.objects.get_or_create(content_type_id=ct, object_id=target.pk, reporter=request.user)
+        messages.success(request, 'Şikayetin yöneticilere iletildi.' if created else 'Bunu zaten şikayet ettin.')
+    path, _, anchor = target.get_absolute_url().partition('#')  # yorumda #c<pk>
+    return redirect(back(request, path) + (f'#{anchor}' if anchor else ''))
+
+
+@moderator_required
 def content(request, ct, pk):
-    """Yorum, konu ya da öneriyi gizler veya gizlemeyi kaldırır."""
+    """Yorum, konu ya da öneriyi gizler veya gizlemeyi kaldırır; şikayetleri gizlemeden de kapatabilir."""
     target = get_target(ct, pk, Hideable)
     owner = target.owner
     allowed = _allowed(request.user, owner)
+    reports = Report.objects.filter(content_type_id=ct, object_id=pk, is_open=True)
+    if request.method == 'POST' and 'dismiss' in request.POST:  # kimseyi etkilemez, kayda düşmez
+        reports.update(is_open=False)
+        messages.success(request, 'Şikayetler kapatıldı.')
+        return redirect('mod_queue')
     form = ActionForm(request.POST if request.method == 'POST' else None)
     if form.is_bound:
         if not allowed:
@@ -61,12 +102,14 @@ def content(request, ct, pk):
             hide = not target.is_hidden
             with transaction.atomic():
                 target.set_hidden(hide)  # öneride süren oylama iptal olur
+                if hide:
+                    reports.update(is_open=False)  # gizleme o içeriğin açık şikayetlerini kapatır
                 _log(request, form, user=owner, target=target, kind=Kind.HIDE if hide else Kind.UNHIDE)
             messages.success(request, 'Gizlendi.' if hide else 'Gizleme kaldırıldı.')
             return redirect(target)
     return render(request, 'moderation/content.html', {
         'target': target, 'kind': target._meta.verbose_name, 'owner': owner, 'allowed': allowed, 'form': form,
-        'title': 'Moderasyon',
+        'reports': reports.count(), 'title': 'Moderasyon',
         'history': ModAction.objects.filter(content_type_id=ct, object_id=pk).select_related(*ROW),
     })
 

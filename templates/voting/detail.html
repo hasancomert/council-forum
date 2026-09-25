@@ -3,8 +3,9 @@
 {% block content %}
 <p><a href="{% url 'proposals' %}">← Açık öneriler</a></p>
 <h1>{% if masked %}Moderasyonla gizlendi{% else %}{{ proposal }}{% endif %}</h1>
-<p>{{ proposal.kind|capfirst }} · {{ proposal.proposer|default:"silinmiş üye" }} · {{ proposal.created_at|date:"j F Y H:i" }}
-  {% mod_links proposal %}</p>
+{# div: şikayet formu (details) <p> içine konamaz #}
+<div>{{ proposal.kind|capfirst }} · {{ proposal.proposer|default:"silinmiş üye" }} · {{ proposal.created_at|date:"j F Y H:i" }}
+  {% mod_links proposal %}</div>
 
 {% if masked %}
   <p><em>Bu öneri moderasyonla gizlendi.</em></p>

@@ -4,6 +4,8 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path('mod/', views.queue, name='mod_queue'),
+    path('report/<int:ct>/<int:pk>/', views.report, name='report'),
     path('mod/log/', views.log, name='mod_log'),
     path('mod/user/<int:pk>/', views.member, name='mod_user'),
     path('mod/<int:ct>/<int:pk>/', views.content, name='mod_content'),

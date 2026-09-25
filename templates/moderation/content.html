@@ -3,6 +3,12 @@
 <h1>Moderasyon</h1>
 <p>{{ kind|capfirst }}: <a href="{{ target.get_absolute_url }}">{{ target }}</a>{% if target.is_hidden %} <span class="badge">gizli</span>{% endif %}</p>
 <p>Sahibi: {% if owner %}<a href="{% url 'mod_user' owner.pk %}">{{ owner }}</a>{% else %}silinmiş üye{% endif %}</p>
+{% if reports %}
+  <form method="post">{% csrf_token %}
+    Açık şikayet: {{ reports }}. Gizlemek şikayetleri kapatır; yersizse
+    <button name="dismiss" value="1">gizlemeden kapat</button> (kayda düşmez).
+  </form>
+{% endif %}
 {% if allowed %}
   <form method="post">{% csrf_token %}
     {{ form }}
