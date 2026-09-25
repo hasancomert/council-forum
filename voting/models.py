@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from accounts.models import User
-from comments.models import Commentable
+from comments.models import Comment, Commentable
 from topics.models import Topic
 
 
@@ -439,11 +439,15 @@ def open_proposal_count(user):
 
 
 def active_member_count():
-    """Kural 3: son ACTIVE_DAYS günde oy kullanmış veya konu paylaşmış üye sayısı."""
+    """Kural 3: son ACTIVE_DAYS günde karar oyu veren, konu açan ya da yorum yazan üye sayısı.
+    Yorum oyu sayılmaz: tek tıkla verilir, yeter sayıyı şişirmemeli.
+    """
     since = timezone.now() - timedelta(days=settings.FORUM['ACTIVE_DAYS'])
     voter_ids = Vote.objects.filter(voted_at__gte=since).values('voter_id')
     author_ids = Topic.objects.filter(created_at__gte=since).values('author_id')
-    return User.objects.filter(models.Q(pk__in=voter_ids) | models.Q(pk__in=author_ids)).distinct().count()
+    commenter_ids = Comment.objects.filter(created_at__gte=since).values('author_id')
+    # pk__in alt sorguları aynı üyeyi iki kez döndürmez, distinct() gerekmez.
+    return User.objects.filter(Q(pk__in=voter_ids) | Q(pk__in=author_ids) | Q(pk__in=commenter_ids)).count()
 
 
 def required_quorum():

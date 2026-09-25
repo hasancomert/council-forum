@@ -54,15 +54,22 @@ Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), ileride PW
 - E-posta ayarı Django 6.1'in `MAILERS` ayarıyla yapılıyor, şimdilik konsola yazıyor. `EMAIL_BACKEND` gibi eski `EMAIL_*` ayarları artık kullanılmıyor, SMTP 9. adımda `MAILERS`'a eklenecek.
 - Şifre sıfırlama/değiştirme sayfaları şimdilik admin şablonlarını kullanıyor. Arayüz yapılırken kendi şablonlarımız yazılacak.
 - Konular: `topics` uygulaması, tek model `Topic`. Alt konu = `parent`'ı dolu konu (ters adı `children`). İki seviye var: `parent`'taki `limit_choices_to={"parent": None}` hem admin listesini süzer hem `full_clean()`'de denetler. Üst konu sonradan değişmez, admin'de yalnızca eklerken seçilir.
-- `is_closed` ve `is_deleted` ayrı alanlar. Ana konudan miras hesaplanır, alt konulara yazılmaz. Görünürlüğün tek yeri `Topic.objects.visible()` (8. adımdaki moderasyon gizlemesi de buraya). Kapalılık için `is_locked` (5. ve 6. adımda öneri ve yorum buna bakacak). `objects` hepsini getirir.
+- `is_closed` ve `is_deleted` ayrı alanlar. Ana konudan miras hesaplanır, alt konulara yazılmaz. Görünürlüğün tek yeri `Topic.objects.visible()`, tek nesnedeki karşılığı `is_visible` (8. adımdaki moderasyon gizlemesi ikisine birlikte eklenecek). `is_open` = görünür ve kapalı değil (`is_locked` değil); öneri ve yorum buna bakar (kural 7). `objects` hepsini getirir.
 - Gerçek silme yok (kural 7): `parent` için `PROTECT`, admin'de silme kapalı. `author` `SET_NULL` ve formlarda düzenlenemez (`editable=False`); admin'de ekleyen kullanıcı olur.
-- Sitede konu açma/düzenleme/kapatma/silme düğmesi henüz yok; oylama motoru (`voting` uygulaması) hazır, arayüzü (öneri formları, oy verme) sırada. Ana sayfa (7. adıma kadar geçici) görünür ana konuları listeler. `topics/<pk>/` gizli konuda 404 döner.
-- Oylama: `voting` uygulaması, ortak alanlar `BaseProposal`'da (abstract), tip başına ayrı model (`TopicOpenProposal/EditProposal/CloseProposal/DeleteProposal/UndoProposal`, `ExpertProposal`, `RequestProposal`). Tek `Vote` modeli `GenericForeignKey` ile hepsine bağlanır; `Vote.cast()` ile verilir/değiştirilir (upsert), ağırlık oy anında sabitlenir.
-- `BaseProposal.finalize()` kural 3'ü (yeter sayı: `required_quorum()`/`active_member_count()`) ve kural 4'ü (ağırlıklı çoğunluk, eşitlikte ret) hesaplar; kabul edilen öneri hedefin güncel durumu denetlenip uygulanır (`apply()`), uygun değilse `accepted` durumunda kalır ve bir sonraki çağrıda tekrar dener. Zamanlayıcı: `python manage.py finalize_proposals` (9. adımda Windows Görev Zamanlayıcısı'na eklenecek), ek paket yok.
-- Kural 8: `BaseProposal.has_recent_rejection()` (aynı tip+hedef+içerik) ve `open_proposal_count()` (kişi başı açık öneri) yardımcıları.
-- 5. adım: B statüsü artık oylamayla da değişebiliyor (`ExpertProposal`). Admin'deki `role` alanı ileride salt okunur yapılacak (şimdilik test için açık).
-- 5. adım: Admin'de konular salt okunur olacak; kuruluş bitince admin'den konu eklemek de kapanacak (kural 9).
-- 5. adım: Geri alma önerisi (`TopicUndoProposal`) ayrı bir "kapalı/silinmiş konular" liste sayfasından açılacak (konu sayfası 404 döndüğü için); sayfa henüz yazılmadı.
+- Sayfalar: konu sayfasında öneri bağlantıları (konu açıksa düzenleme/kapatma/silme/istek, ana konuda alt konu; kapalıysa yeniden açma). Ana sayfa (7. adıma kadar geçici) görünür ana konuları, yeni ana konu önerisi, açık öneriler (`proposals/`) ve arşiv bağlantılarını gösterir. `topics/<pk>/` gizli konuda 404 döner; kapalı ve silinmiş konular `topics/archive/`'de (silinmişin yalnızca başlığı ve tarihi), geri alma önerisi oradan açılır. `base.html` `messages`'ı gösterir.
+- Oylama: `voting` uygulaması, ortak alanlar `BaseProposal`'da (abstract), tip başına ayrı model (`TopicOpenProposal/EditProposal/CloseProposal/DeleteProposal/UndoProposal`, `ExpertProposal`, `RequestProposal`). `SLUG` ve `PROPOSALS` sözlüğü URL'deki tipten modeli bulur (`proposals/<tip>/<pk>/`). Tek `Vote` modeli `GenericForeignKey` ile hepsine bağlanır; `Vote.cast()` ile verilir/değiştirilir (upsert), ağırlık oy anında sabitlenir.
+- `BaseProposal.finalize()` öneri sayfası ziyaretinde ve `python manage.py finalize_proposals` komutuyla (9. adımda Windows Görev Zamanlayıcısı'na eklenecek) çağrılır. Kural 3'ü (yeter sayı: `required_quorum()`) ve kural 4'ü (`tally()` ile ağırlıklı çoğunluk, eşitlikte ret) hesaplar, o anki yeter sayıyı `quorum` alanına yazar. Koşullu UPDATE sayesinde iki çağrı aynı anda çalışsa da öneri bir kez sonuçlanır ve uygulanır. Kabul edilen öneri hedefin güncel durumu denetlenip uygulanır (`apply()`); uygun değilse `accepted` durumunda kalır ve her çağrıda yeniden dener.
+- Öneri denetimleri `BaseProposal.clean()`'de (ModelForm ve admin kendiliğinden çağırır): oy hakkı (`can_vote`), kişi başı açık öneri sınırı (`open_proposal_count()`), tipe göre `check_target()` (kapalı konu öneri almaz; geri alma yalnızca kapalı/silinmiş konuya; B statüsü başvurusu yalnızca kendi adına), `is_duplicate()` (aynı tip+hedef+içerik oylamada ya da reddedilmesinin, yani `voting_ends_at`'in üzerinden bekleme süresi geçmemiş). Formun alanları `FORM_FIELDS`, URL'deki konunun yazıldığı alan `TARGET`, başlangıç değerleri `prefill()`; hepsi modelde.
+- Yorumlar: `comments` uygulaması. Yorum alabilen modeller (`Topic`, `BaseProposal`) soyut `Commentable`'dan türer (`GenericRelation` + `is_open`); `Comment` hedefe `GenericForeignKey` ile bağlanır. `comments`, `topics` ve `voting`'i import etmez. Tek seviye yanıt: yanıta yanıt ana yoruma bağlanır. İçerik düz metin (`urlize` + `linebreaksbr`), en fazla `COMMENT_MAX_LENGTH`.
+- Yorum hedef açıkken yazılır: konuda `Topic.is_open`, öneride oylama bitene kadar (istekte tartışma + oylama; istenirse `RequestProposal.is_open` ile yalnızca tartışmaya daraltılır). Hedef kapanınca yeni yorum, yanıt, düzenleme ve yorum oyu durur; silme serbest. Düzenleme ve silme yalnızca yazarın ("düzenlendi" = `edited_at`); silme yumuşak ve geri alınmaz, yerinde "Bu yorum silindi" yazar, yanıtlar kalır. Yorum için hesap yaşı şartı yok; öneri açmak ve her türlü oy için `can_vote` gerekir.
+- Yorum oyu: ayrı `CommentVote` modeli (`Vote` değil), ▲ +1 / ▼ −1, ağırlık herkes için 1. Kendi, silinmiş ya da kapalı hedefteki yoruma oy verilmez; aynı tuşa ikinci basış oyu geri alır. `Comment.score` tabloda tutulur, yalnızca `CommentVote.cast()` `F()` ile değiştirir (yorum satırı kilitlenir). Puan herkese açık, kimin ne verdiği gizli: `CommentVote` admin'de yok, `CommentAdmin` salt okunur.
+- Yorum bölümü `{% load comments %}{% comment_section hedef %}` inclusion tag'i, yorum sayısından bağımsız 2 sorgu. Ana yorumlar puana göre (eşitse eski önde) ya da `?sort=new`; yanıtlar kronolojik. JavaScript yok: her işlem POST formu, ardından `#c<pk>` çapasına dönülür (sayfa yenilemeden oy 9. adımda).
+- Aktif üye (kural 3): son `ACTIVE_DAYS` günde karar oyu veren, konu açan ya da yorum yazan. Yorum oyu sayılmaz, yeter sayıyı şişirmesin.
+- Testler: `voting/tests.py`, `comments/tests.py`; `python manage.py test`. Test kullanıcıları şifresiz (`make_user`), giriş `force_login` ile.
+- Açık: kabul edilip uygulanamayan öneri (ör. üst konusu kapanmış alt konu önerisi) süresiz bekliyor; bir son tarih ya da "uygulanamadı" durumu eklenmeli.
+- Açık: B statüsü artık oylamayla değişiyor (`ExpertProposal`); admin'deki `role` alanı salt okunur yapılacak (şimdilik test için açık). Admin'de konular salt okunur olacak; kuruluş bitince admin'den konu eklemek de kapanacak (kural 9).
+- 7. adım: çok yorumlu sayfalar için sayfalama (ana yorumlar üzerinden `Paginator`).
+- 8. adım: yorum hız sınırı (spam) ve moderasyonla gizleme (`is_hidden`, sayfada "moderasyonla gizlendi"). Yanıt bildirimleri şimdilik kapsam dışı.
 - 8. adım: Hesap kapatma `is_active=False` ile yapılırsa, hiç doğrulanmamış bir hesabın doğrulama bağlantısı onu yeniden açabilir. Kapatma için ayrı bir işaret düşünülecek.
 - `SECRET_KEY` şu an geliştirme anahtarı (`django-insecure`). Yayından önce (9. adım) yenisi üretilip `.env` dosyasına taşınacak.
 
@@ -71,8 +78,8 @@ Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), ileride PW
 2. Kurulum: Python, VS Code, Git/GitHub, boş Django projesi ✓
 3. Kullanıcılar: roller, oy ağırlığı, kayıt/giriş ✓
 4. Konular ve alt konular ✓
-5. Oylama motoru: öneri → tartışma → oylama → sonuç, zamanlayıcı — motor ✓, arayüz sırada
-6. Yorumlar ve upvote/downvote
+5. Oylama motoru: öneri → tartışma → oylama → sonuç, zamanlayıcı ✓
+6. Yorumlar ve upvote/downvote ✓
 7. Ana sayfa: panel, sekmeler, sıralama
 8. Moderasyon: gizleme, engelleme, herkese açık moderasyon kaydı
 9. Yayın: mobil uyum, PWA, sunucu, alan adı, kullanım şartları, KVKK
@@ -92,4 +99,4 @@ Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), ileride PW
 - Commit ve push'u kullanıcıya sormadan yapma.
 
 ## Durum
-1.–4. adım tamamlandı; 5. adımın motoru (modeller, finalize, admin, zamanlayıcı) tamamlandı, arayüzü (öneri formları, oy verme, geri alma listesi) kaldı. Sıradaki: 6. adım (yorumlar ve upvote/downvote); tasarımı claude.ai'de konuşulacak.
+1.–6. adım tamamlandı. Sıradaki: 7. adım (ana sayfa: aktif oylamalar paneli, konu/alt konu sekmeleri, sıralama); tasarımı claude.ai'de konuşulacak.
