@@ -91,7 +91,7 @@ class TopicVoteTests(TestCase):
         self.client.force_login(self.bob)
         url = f'/topics/{self.topic.pk}/vote/'
         self.assertRedirects(self.client.post(url, {'value': '1'}), self.topic.get_absolute_url())
-        self.assertContains(self.client.get(self.topic.get_absolute_url()), 'class="on"')
+        self.assertContains(self.client.get(self.topic.get_absolute_url()), 'aria-pressed="true"')
         for value in ('5', 'abc'):
             self.assertContains(self.client.post(url, {'value': value}, follow=True), 'Geçersiz oy.')
         self.topic.refresh_from_db()

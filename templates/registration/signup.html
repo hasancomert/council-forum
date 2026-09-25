@@ -4,7 +4,7 @@
 <form method="post">{% csrf_token %}
   {{ form }}
   <div class="cf-turnstile" data-sitekey="{{ site_key }}"></div>
-  <button>Kayıt ol</button>
+  <button class="primary">Kayıt ol</button>
 </form>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 {% endblock %}

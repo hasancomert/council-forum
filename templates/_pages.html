@@ -1,8 +1,8 @@
 {# Sayfa bağlantıları. page: Paginator sayfası, anchor: isteğe bağlı çapa (#yorumlar). Diğer parametreler korunur. #}
 {% if page.has_other_pages %}
-  <nav class="pages">
-    {% if page.has_previous %}<a href="{% querystring page=page.previous_page_number %}{{ anchor }}">‹ önceki</a> ·{% endif %}
-    {{ page.number }} / {{ page.paginator.num_pages }}
-    {% if page.has_next %}· <a href="{% querystring page=page.next_page_number %}{{ anchor }}">sonraki ›</a>{% endif %}
+  <nav class="pages" aria-label="Sayfalar">
+    {% if page.has_previous %}<a href="{% querystring page=page.previous_page_number %}{{ anchor }}" rel="prev">‹ önceki</a>{% endif %}
+    <span>{{ page.number }} / {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a href="{% querystring page=page.next_page_number %}{{ anchor }}" rel="next">sonraki ›</a>{% endif %}
   </nav>
 {% endif %}

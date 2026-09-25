@@ -1,0 +1,18 @@
+{% load static %}<!doctype html>
+{# 500 ve CSRF hatası: istek bağlamı olmadan (veritabanı çökmüş olabilir) render edilir, base.html'e dayanmaz. #}
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} · Forum</title>
+  <link rel="stylesheet" href="{% static 'css/site.css' %}">
+  <link rel="icon" href="{% static 'img/logo.svg' %}" type="image/svg+xml">
+</head>
+<body>
+  <main class="error-page">
+    <a class="brand" href="{% url 'home' %}"><img src="{% static 'img/logo.svg' %}" alt="" width="32" height="32">Forum</a>
+    {% block content %}{% endblock %}
+    <p><a class="button" href="{% url 'home' %}">Ana sayfaya dön</a></p>
+  </main>
+</body>
+</html>

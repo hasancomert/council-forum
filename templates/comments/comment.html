@@ -1,37 +1,40 @@
 {% load moderation %}
 <article id="c{{ c.pk }}" class="comment{% if reply %} reply{% endif %}">
   {% if c.is_deleted %}
-    <p><em>Bu yorum silindi.</em></p>
+    <p class="muted"><em>Bu yorum silindi.</em></p>
   {% elif c.masked %}
-    <p><em>Bu yorum moderasyonla gizlendi.</em></p>
+    <p class="muted"><em>Bu yorum moderasyonla gizlendi.</em></p>
   {% else %}
     {# div: HTML'de <p> içine <form> konamaz, tarayıcı paragrafı erken kapatır #}
-    <div><strong>{{ c.author|default:"silinmiş üye" }}</strong> ·
-      <a href="#c{{ c.pk }}">{{ c.created_at|date:"j F Y H:i" }}</a>{% if c.edited_at %} · düzenlendi{% endif %} ·
+    <div class="meta"><strong>{{ c.author|default:"silinmiş üye" }}</strong>
+      <a href="#c{{ c.pk }}">{{ c.created_at|date:"j F Y H:i" }}</a>{% if c.edited_at %} <span>düzenlendi</span>{% endif %}
+      {% if c.is_hidden %}<span class="badge hidden">gizli</span>{% endif %}
       {% if not c.frozen and can_vote and user != c.author %}
         {% url 'comment_vote' c.pk as url %}{% include "_vote.html" with score=c.score mine=c.my_vote %}
-      {% else %}puan {{ c.score }}{% endif %}</div>
-    {% if c.is_hidden %}<p><em>Moderasyonla gizlendi; metnini yalnızca yazarı ve yöneticiler görüyor.</em></p>{% endif %}
-    <p>{{ c.body|urlize|linebreaksbr }}</p>
+      {% else %}<span>puan <strong>{{ c.score }}</strong></span>{% endif %}</div>
+    {% if c.is_hidden %}<p class="notice">Moderasyonla gizlendi; metnini yalnızca yazarı ve yöneticiler görüyor.</p>{% endif %}
+    <p class="body">{{ c.body|urlize|linebreaksbr }}</p>
     {% if user.is_authenticated %}
-      {% if not c.frozen and can_post %}
-        <details><summary>Yanıtla</summary>
-          <form method="post" action="{% url 'comment_add' ct target.pk %}">{% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.get_full_path }}">
-            <input type="hidden" name="parent" value="{{ c.pk }}">{{ form.body }}<button>Yanıtla</button>
-          </form>
-        </details>
-      {% endif %}
-      {% mod_links c %}
-      {% if user == c.author %}
-        {% if not c.frozen and can_post %}<a href="{% url 'comment_edit' c.pk %}?next={{ request.get_full_path|urlencode }}">Düzenle</a>{% endif %}
-        <details><summary>Sil</summary>
-          <form method="post" action="{% url 'comment_delete' c.pk %}">{% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.get_full_path }}">
-            Silinen yorum geri alınamaz. <button>Evet, sil</button>
-          </form>
-        </details>
-      {% endif %}
+      <div class="actions">
+        {% if not c.frozen and can_post %}
+          <details><summary>Yanıtla</summary>
+            <form method="post" action="{% url 'comment_add' ct target.pk %}">{% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <input type="hidden" name="parent" value="{{ c.pk }}">{{ form.body }}<button class="primary">Yanıtla</button>
+            </form>
+          </details>
+        {% endif %}
+        {% mod_links c %}
+        {% if user == c.author %}
+          {% if not c.frozen and can_post %}<a href="{% url 'comment_edit' c.pk %}?next={{ request.get_full_path|urlencode }}">Düzenle</a>{% endif %}
+          <details><summary>Sil</summary>
+            <form method="post" action="{% url 'comment_delete' c.pk %}">{% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.get_full_path }}">
+              Silinen yorum geri alınamaz. <button>Evet, sil</button>
+            </form>
+          </details>
+        {% endif %}
+      </div>
     {% endif %}
   {% endif %}
 </article>

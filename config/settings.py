@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from django.core.exceptions import ImproperlyConfigured
+from django.utils.csp import CSP
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -91,6 +92,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django.middleware.csp.ContentSecurityPolicyMiddleware',  # SECURE_CSP boşsa başlık eklemez
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -133,7 +135,8 @@ USE_TZ = True
 # Statik dosyalar: yayında collectstatic STATIC_ROOT'a toplar; WhiteNoise sıkıştırır ve adlara içerik
 # hash'i ekler (site.4f2a….css), böylece tarayıcı dosyayı süresiz önbellekleyebilir.
 STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_ROOT = None if DEBUG else BASE_DIR / 'staticfiles'  # geliştirmede dosyalar doğrudan static/'ten
+STATICFILES_DIRS = [BASE_DIR / 'static']
 STORAGES = {
     'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
     'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage' if DEBUG
@@ -148,6 +151,13 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = int(os.environ.get('HSTS_SECONDS') or 31536000)  # 1 yıl; ilk yayında küçük başla
     SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_PRELOAD = True
+    # CSP: yalnızca kendi dosyalarımız (satır içi script/stil yok) ve Turnstile. Geliştirmede kapalı:
+    # Django'nun hata ayıklama sayfası satır içi stil kullanır.
+    SECURE_CSP = {
+        'default-src': [CSP.SELF], 'script-src': [CSP.SELF, 'https://challenges.cloudflare.com'],
+        'frame-src': ['https://challenges.cloudflare.com'], 'object-src': [CSP.NONE], 'base-uri': [CSP.NONE],
+        'form-action': [CSP.SELF], 'frame-ancestors': [CSP.NONE],
+    }
 
 # E-posta (Django 6.1 MAILERS). EMAIL_HOST yoksa konsola yazar; yayında check --deploy bunu hata sayar.
 MAILERS = {'default': {

@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% block title %}Sayfa bulunamadı · {% endblock %}
+{% block content %}<h1>Sayfa bulunamadı</h1>
+<p>Aradığın sayfa yok ya da taşınmış. Silinen konuların başlıkları <a href="{% url 'archive' %}">Silinen konular</a> sayfasında.</p>{% endblock %}

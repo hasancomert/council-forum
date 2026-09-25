@@ -3,26 +3,28 @@
 {% block aside %}{% active_panel %}{% endblock %}
 {% block content %}
 {% if topic.parent %}<p><a href="{{ topic.parent.get_absolute_url }}">← {{ topic.parent }}</a></p>{% endif %}
-<h1>{% if masked %}Moderasyonla gizlendi{% else %}{{ topic.title }}{% endif %}{% if topic.is_locked %} (Kapalı){% endif %}</h1>
-<div>
+<h1>{% if masked %}Moderasyonla gizlendi{% else %}{{ topic.title }}{% endif %}
+  {% if topic.is_locked %}<span class="badge">kapalı</span>{% endif %}
+  {% if topic.is_hidden and not masked %}<span class="badge hidden">gizli</span>{% endif %}</h1>
+<div class="meta">
   {% if votable %}{% url 'topic_vote' topic.pk as url %}{% include "_vote.html" with score=topic.score mine=my_vote %}
-  {% else %}puan {{ topic.score }}{% endif %}
-  · {{ topic.author|default:"silinmiş üye" }} · {{ topic.created_at }} {% mod_links topic %}
+  {% else %}<span>puan <strong>{{ topic.score }}</strong></span>{% endif %}
+  <span>{{ topic.author|default:"silinmiş üye" }}</span> <span>{{ topic.created_at|date:"j F Y H:i" }}</span> {% mod_links topic %}
 </div>
 {% if masked %}
-  <p><em>Bu konu moderasyonla gizlendi.</em></p>
+  <p class="notice">Bu konu moderasyonla gizlendi.</p>
 {% else %}
-  {% if topic.is_hidden %}<p><em>Bu konu moderasyonla gizlendi; metnini yalnızca sen ve yöneticiler görüyor.</em></p>{% endif %}
+  {% if topic.is_hidden %}<p class="notice">Bu konu moderasyonla gizlendi; metnini yalnızca sen ve yöneticiler görüyor.</p>{% endif %}
   {{ topic.description|linebreaks }}
 {% endif %}
 {% if user.is_authenticated %}
-  <p>
+  <p class="links">
     {% if topic.is_open %}
-      <a href="{% url 'proposal_new' 'edit' topic.pk %}">Düzenleme öner</a> ·
-      <a href="{% url 'proposal_new' 'close' topic.pk %}">Kapatma öner</a> ·
-      <a href="{% url 'proposal_new' 'delete' topic.pk %}">Silme öner</a> ·
+      <a href="{% url 'proposal_new' 'edit' topic.pk %}">Düzenleme öner</a>
+      <a href="{% url 'proposal_new' 'close' topic.pk %}">Kapatma öner</a>
+      <a href="{% url 'proposal_new' 'delete' topic.pk %}">Silme öner</a>
       <a href="{% url 'proposal_new' 'request' topic.pk %}">İstek aç</a>
-      {% if not topic.parent %} · <a href="{% url 'proposal_new' 'open' topic.pk %}">Alt konu öner</a>{% endif %}
+      {% if not topic.parent %}<a href="{% url 'proposal_new' 'open' topic.pk %}">Alt konu öner</a>{% endif %}
     {% elif topic.is_closed and not topic.is_hidden %}
       <a href="{% url 'proposal_new' 'undo' topic.pk %}">Yeniden açmayı öner</a>
     {% endif %}
@@ -31,9 +33,9 @@
 {% if not topic.parent %}
   <h2>Alt konular</h2>
   <ul class="topics">
-    {% for t in subs %}{% include "topics/_row.html" with parent=topic %}{% empty %}<li>Açık alt konu yok.</li>{% endfor %}
+    {% for t in subs %}{% include "topics/_row.html" with parent=topic %}{% empty %}<li class="empty">Açık alt konu yok.</li>{% endfor %}
   </ul>
-  <p>
+  <p class="links">
     {% if n_subs.open > subs|length %}<a href="{% url 'home' %}?tab=sub&amp;parent={{ topic.pk }}">tüm alt konular ({{ n_subs.open }}) →</a>{% endif %}
     {% if n_subs.closed %}<a href="{% url 'home' %}?tab=closed&amp;parent={{ topic.pk }}">kapalı alt konular ({{ n_subs.closed }}) →</a>{% endif %}
   </p>

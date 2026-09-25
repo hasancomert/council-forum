@@ -219,7 +219,7 @@ class PanelTests(VotingTestCase):
 
     def panel(self, url='/'):
         html = self.client.get(url).content.decode()
-        return html[html.index('<aside>'):]
+        return html[html.index('<aside>'):html.index('</aside>')]
 
     def test_order_phases_and_expiry(self):
         now = timezone.now()

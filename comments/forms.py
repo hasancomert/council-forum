@@ -8,4 +8,5 @@ class CommentForm(forms.ModelForm):
     class Meta:
         model = Comment
         fields = ['body']
-        widgets = {'body': forms.Textarea(attrs={'rows': 3})}
+        # aria-label: sayfada çok yorum formu var, id'li <label> yerine ekran okuyucuya ad
+        widgets = {'body': forms.Textarea(attrs={'rows': 3, 'aria-label': 'Yorum'})}

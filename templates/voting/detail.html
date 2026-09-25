@@ -2,15 +2,17 @@
 {% load comments moderation %}
 {% block content %}
 <p><a href="{% url 'proposals' %}">← Açık öneriler</a></p>
-<h1>{% if masked %}Moderasyonla gizlendi{% else %}{{ proposal }}{% endif %}</h1>
+<h1>{% if masked %}Moderasyonla gizlendi{% else %}{{ proposal }}{% endif %}
+  {% if proposal.status == "cancelled" %}<span class="badge cancelled">iptal</span>{% endif %}
+  {% if proposal.is_hidden and not masked %}<span class="badge hidden">gizli</span>{% endif %}</h1>
 {# div: şikayet formu (details) <p> içine konamaz #}
-<div>{{ proposal.kind|capfirst }} · {{ proposal.proposer|default:"silinmiş üye" }} · {{ proposal.created_at|date:"j F Y H:i" }}
-  {% mod_links proposal %}</div>
+<div class="meta"><span>{{ proposal.kind|capfirst }}</span> <span>{{ proposal.proposer|default:"silinmiş üye" }}</span>
+  <span>{{ proposal.created_at|date:"j F Y H:i" }}</span> {% mod_links proposal %}</div>
 
 {% if masked %}
-  <p><em>Bu öneri moderasyonla gizlendi.</em></p>
+  <p class="notice">Bu öneri moderasyonla gizlendi.</p>
 {% else %}
-  {% if proposal.is_hidden %}<p><em>Bu öneri moderasyonla gizlendi; metnini yalnızca sen ve yöneticiler görüyor.</em></p>{% endif %}
+  {% if proposal.is_hidden %}<p class="notice">Bu öneri moderasyonla gizlendi; metnini yalnızca sen ve yöneticiler görüyor.</p>{% endif %}
   {# gizli konunun adı burada da kendiliğinden maskelenir (Topic.__str__) #}
   {% if proposal.parent %}
     <p>Üst konu: {% if proposal.parent.has_page %}<a href="{{ proposal.parent.get_absolute_url }}">{{ proposal.parent }}</a>{% else %}{{ proposal.parent }} (silinmiş){% endif %}</p>
@@ -32,7 +34,7 @@
 {% elif tally %}
   <p>Sonuç: <strong>{{ proposal.get_status_display }}</strong>{% if proposal.applied_at %} · {{ proposal.applied_at|date:"j F Y H:i" }}{% endif %}</p>
   <p>Evet {{ tally.yes }} · Hayır {{ tally.no }}{% if proposal.WEIGHTED %} (ağırlıklı){% endif %} · katılım {{ tally.count }}, yeter sayı {{ proposal.quorum }}</p>
-  {% if proposal.status == "accepted" %}<p>Hedefin şu anki durumu uygun olmadığı için henüz uygulanamadı.</p>{% endif %}
+  {% if proposal.status == "accepted" %}<p class="notice">Hedefin şu anki durumu uygun olmadığı için henüz uygulanamadı.</p>{% endif %}
 {% else %}
   {% if proposal.in_discussion %}<p>Tartışma sürüyor; oylama {{ proposal.discussion_ends_at|date:"j F Y H:i" }} tarihinde başlar.</p>{% endif %}
   <p>Bitiş: {{ proposal.voting_ends_at|date:"j F Y H:i" }} ({{ proposal.voting_ends_at|timeuntil }} kaldı). Katılım: {{ proposal.participant_count }}. Sonuç oylama bitince açıklanır.</p>
@@ -42,8 +44,10 @@
     {% if my_vote %}<p>Oyun: <strong>{{ my_vote.get_choice_display }}</strong></p>{% endif %}
     {% if proposal.accepts_votes %}
       {% if user.can_vote %}
-        <form method="post" action="{% url 'proposal_vote' proposal.SLUG proposal.pk %}">{% csrf_token %}
-          <button name="choice" value="yes">Evet</button> <button name="choice" value="no">Hayır</button>
+        {# iki düğme aynı görünümde: oylama bir seçeneğe yönlendirmesin #}
+        <form method="post" action="{% url 'proposal_vote' proposal.SLUG proposal.pk %}" class="links">{% csrf_token %}
+          <button name="choice" value="yes" aria-pressed="{% if my_vote.choice == 'yes' %}true{% else %}false{% endif %}">Evet</button>
+          <button name="choice" value="no" aria-pressed="{% if my_vote.choice == 'no' %}true{% else %}false{% endif %}">Hayır</button>
         </form>
       {% else %}
         <p>{% if user.is_banned %}Engelin sürerken oy veremezsin.{% else %}Henüz oy hakkın yok (kural 1: hesap yaşı).{% endif %}</p>

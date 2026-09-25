@@ -1,53 +1,42 @@
-<!doctype html>
+{% load static %}<!doctype html>
 <html lang="tr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% if title %}{{ title }} · {% endif %}Forum</title>
-  <style>
-    body { max-width: 68rem; margin: 0 auto; padding: 0 1rem; font-family: system-ui, sans-serif; line-height: 1.5; }
-    /* geniş ekranda panel sağda, dar ekranda içeriğin altında; min-width: 0 uzun bağlantı taşmasın */
-    .layout { display: grid; gap: 1.5rem; }
-    .layout > * { min-width: 0; }
-    @media (min-width: 60rem) { .layout { grid-template-columns: 1fr 18rem; } }
-    .panel h2 { font-size: 1.1rem; }
-    .panel ul { padding-left: 1rem; }
-    form.inline { display: inline; }
-    textarea { display: block; width: 100%; box-sizing: border-box; }
-    .reply { margin-left: 2rem; }
-    .vote button.on { background: #ffd54f; }
-    .messages .error { color: #b00020; }
-    .messages .success { color: #1b5e20; }
-    .tabs a { margin-right: 1rem; }
-    .tabs a[aria-current] { font-weight: bold; text-decoration: none; }
-    .topics { list-style: none; padding: 0; }
-    .topics li { margin: .75rem 0; }
-    .topics .score { display: inline-block; min-width: 2rem; text-align: right; margin-right: .5rem; font-weight: bold; }
-    .topics small { margin-left: 2.5rem; color: #555; }
-    .badge { font-size: .8em; padding: 0 .4em; border: 1px solid #999; border-radius: .3em; color: #555; }
-  </style>
+  <title>{% block title %}{% if title %}{{ title }} · {% endif %}{% endblock %}Forum</title>
+  <link rel="stylesheet" href="{% static 'css/site.css' %}">
+  <link rel="icon" href="{% static 'img/logo.svg' %}" type="image/svg+xml">
 </head>
 <body>
-  <nav>
-    <a href="{% url 'home' %}">Forum</a> · <a href="{% url 'mod_log' %}">Moderasyon kaydı</a>
-    {% if user.is_moderator %} · <a href="{% url 'mod_queue' %}">Şikayetler</a>{% endif %}
-    {% if user.is_authenticated %}
-      {{ user.username }}
-      <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button>Çıkış</button></form>
-    {% else %}
-      <a href="{% url 'login' %}">Giriş</a> <a href="{% url 'signup' %}">Kayıt ol</a>
-    {% endif %}
-  </nav>
+  <header class="top">
+    <a class="brand" href="{% url 'home' %}"><img src="{% static 'img/logo.svg' %}" alt="" width="32" height="32">Forum</a>
+    <nav class="menu" aria-label="Ana menü">
+      <a href="{% url 'proposals' %}">Öneriler</a>
+      <a href="{% url 'mod_log' %}">Moderasyon</a>
+      {% if user.is_moderator %}<a href="{% url 'mod_queue' %}">Şikayetler</a>{% endif %}
+      {% if user.is_authenticated %}
+        <span class="me">{{ user.username }}</span>
+        <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button class="link">Çıkış</button></form>
+      {% else %}
+        <a href="{% url 'login' %}">Giriş</a>
+        <a href="{% url 'signup' %}">Kayıt ol</a>
+      {% endif %}
+    </nav>
+  </header>
   {% if messages %}
     <ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>
   {% endif %}
   {% if user.is_banned %}
-    <p class="messages"><span class="error">Engelin {{ user.banned_until|date:"j F Y H:i" }} tarihine kadar sürüyor:
-      okuyabilirsin, ama yazamaz, oy veremez ve öneri açamazsın.</span></p>
+    <p class="notice error">Engelin {{ user.banned_until|date:"j F Y H:i" }} tarihine kadar sürüyor:
+      okuyabilirsin, ama yazamaz, oy veremez ve öneri açamazsın.</p>
   {% endif %}
   <div class="layout">
     <main>{% block content %}{% endblock %}</main>
     <aside>{% block aside %}{% endblock %}</aside>
   </div>
+  <footer class="foot">
+    <a href="{% url 'mod_log' %}">Moderasyon kaydı</a>
+    <a href="{% url 'archive' %}">Silinen konular</a>
+  </footer>
 </body>
 </html>

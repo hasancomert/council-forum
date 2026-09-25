@@ -1,9 +1,9 @@
 <section id="yorumlar">
   <h2>Yorumlar ({{ count }})</h2>
   {% if comments %}
-    <p>Sırala:
-      {% if sort == "new" %}<a href="?sort=top#yorumlar">en çok oy</a> · <strong>en yeni</strong>
-      {% else %}<strong>en çok oy</strong> · <a href="?sort=new#yorumlar">en yeni</a>{% endif %}
+    <p class="opts">Sırala:
+      {% if sort == "new" %}<a href="?sort=top#yorumlar">en çok oy</a> <strong>en yeni</strong>
+      {% else %}<strong>en çok oy</strong> <a href="?sort=new#yorumlar">en yeni</a>{% endif %}
     </p>
   {% endif %}
   {% for c in comments %}
@@ -12,14 +12,14 @@
   {% endfor %}
   {% include "_pages.html" with anchor="#yorumlar" %}
   {% if not open %}
-    <p>Yorumlar kapalı.</p>
+    <p class="muted">Yorumlar kapalı.</p>
   {% elif can_post %}
-    <form method="post" action="{% url 'comment_add' ct target.pk %}">{% csrf_token %}
+    <form method="post" action="{% url 'comment_add' ct target.pk %}" class="comment-form">{% csrf_token %}
       <input type="hidden" name="next" value="{{ request.get_full_path }}">
-      {{ form.body }}<button>Yorum yaz</button>
+      {{ form.body }}<button class="primary">Yorum yaz</button>
     </form>
   {% elif user.is_authenticated %}
-    <p>Engelin sürerken yorum yazamazsın.</p>
+    <p class="muted">Engelin sürerken yorum yazamazsın.</p>
   {% else %}
     <p><a href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">Giriş yap</a>, yorum yaz.</p>
   {% endif %}

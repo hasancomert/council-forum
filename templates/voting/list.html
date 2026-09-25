@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Açık öneriler</h1>
-{% if user.is_authenticated %}<p><a href="{% url 'proposal_new' 'expert' %}">Bilirkişilik başvurusu ya da geri alma önerisi</a></p>{% endif %}
-<ul>
+{% if user.is_authenticated %}<p class="links"><a href="{% url 'proposal_new' 'expert' %}">Bilirkişilik başvurusu ya da geri alma önerisi</a></p>{% endif %}
+<ul class="list">
   {% for p in proposals %}
     <li>
-      <a href="{{ p.get_absolute_url }}">{{ p }}</a> · {{ p.kind }} ·
-      {% if p.in_discussion %}tartışmada{% else %}{{ p.participants }} katılım{% endif %} ·
-      {{ p.voting_ends_at|timeuntil }} kaldı
+      <a href="{{ p.get_absolute_url }}">{{ p }}</a>
+      <br><small>{{ p.kind }} · {% if p.in_discussion %}tartışmada{% else %}{{ p.participants }} katılım{% endif %} ·
+        {{ p.voting_ends_at|timeuntil }} kaldı</small>
     </li>
   {% empty %}
     <li>Şu an oylanan öneri yok.</li>

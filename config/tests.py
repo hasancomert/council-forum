@@ -7,7 +7,10 @@ from unittest.mock import patch
 
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management.utils import get_random_secret_key
-from django.test import SimpleTestCase
+from django.template.loader import render_to_string
+from django.test import Client, SimpleTestCase, TestCase
+
+from topics.models import Topic
 
 from .settings import BASE_DIR, database, env_list, load_env
 
@@ -53,3 +56,17 @@ class EnvTests(SimpleTestCase):
         r = manage('check', SECRET_KEY='')
         self.assertNotEqual(r.returncode, 0)
         self.assertIn('SECRET_KEY ortam değişkeni gerekli', r.stderr)
+
+
+class PageTests(TestCase):
+    def test_error_pages(self):
+        self.assertContains(self.client.get('/yok/'), 'Sayfa bulunamadı', status_code=404)
+        r = Client(enforce_csrf_checks=True).post('/accounts/login/')
+        self.assertContains(r, 'Form gönderilemedi', status_code=403)
+        self.assertIn('Bir şeyler ters gitti', render_to_string('500.html'))  # istek ve veritabanı olmadan
+
+    def test_no_inline_styles_or_scripts(self):
+        """Yayındaki CSP yalnızca dosyadan stil ve script'e izin verir: şablonlarda satır içi olan kalmamalı."""
+        topic = Topic.objects.create(title='Konu')
+        for url in ('/', topic.get_absolute_url(), '/accounts/signup/', '/mod/log/', '/yok/'):
+            self.assertNotRegex(self.client.get(url).content.decode(), r'style=|<style|<script>', url)

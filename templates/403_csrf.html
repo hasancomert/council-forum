@@ -1,0 +1,5 @@
+{% extends "error.html" %}
+{% block title %}Form geçersiz{% endblock %}
+{% block content %}<h1>Form gönderilemedi</h1>
+<p>Güvenlik denetimi (CSRF) geçmedi: sayfa çok uzun açık kalmış ya da çerezler kapalı olabilir.
+  Geri dönüp sayfayı yenile ve tekrar dene.</p>{% endblock %}

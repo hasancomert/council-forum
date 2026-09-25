@@ -4,17 +4,17 @@
 {% block content %}
 {% if parent %}
   <h1><a href="{{ parent.get_absolute_url }}">{{ parent }}</a> alt konuları
-    <a href="{% querystring parent=None page=None %}" title="Süzgeci kaldır">✕</a></h1>
+    <a class="button" href="{% querystring parent=None page=None %}" title="Süzgeci kaldır" aria-label="Süzgeci kaldır">✕</a></h1>
 {% else %}
   <h1>Konular</h1>
 {% endif %}
-<nav class="tabs">
+<nav class="tabs" aria-label="Sekmeler">
   {% for key, label in tabs.items %}
     <a href="{% querystring tab=key sort=None page=None %}"{% if key == tab %} aria-current="page"{% endif %}>{{ label }}</a>
   {% endfor %}
 </nav>
-<p>Sırala:
-  {% for key, label in sorts.items %}{% if not forloop.first %} · {% endif %}
+<p class="opts">Sırala:
+  {% for key, label in sorts.items %}
     {% if key == sort %}<strong>{{ label }}</strong>{% else %}<a href="{% querystring sort=key page=None %}">{{ label }}</a>{% endif %}
   {% endfor %}
 </p>
@@ -22,12 +22,12 @@
   {% for t in page %}
     {% include "topics/_row.html" %}
   {% empty %}
-    <li>Bu sekmede konu yok.</li>
+    <li class="empty">Bu sekmede konu yok.</li>
   {% endfor %}
 </ul>
 {% include "_pages.html" %}
-<p>
-  {% if user.is_authenticated %}<a href="{% url 'proposal_new' 'open' %}">Yeni ana konu öner</a> · {% endif %}
-  <a href="{% url 'proposals' %}">Açık öneriler</a> · <a href="{% url 'archive' %}">Silinen konular</a>
+<p class="links">
+  {% if user.is_authenticated %}<a class="button primary" href="{% url 'proposal_new' 'open' %}">Yeni ana konu öner</a>{% endif %}
+  <a href="{% url 'proposals' %}">Açık öneriler</a> <a href="{% url 'archive' %}">Silinen konular</a>
 </p>
 {% endblock %}

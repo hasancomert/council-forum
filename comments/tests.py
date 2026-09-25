@@ -198,7 +198,7 @@ class VoteTests(CommentTestCase):
         self.client.force_login(self.bob)
         r = self.client.post(f'/comments/{c.pk}/vote/', {'value': '1'})
         self.assertRedirects(r, f'{self.topic.get_absolute_url()}#c{c.pk}')
-        self.assertContains(self.client.get(self.topic.get_absolute_url()), 'class="on"')
+        self.assertContains(self.client.get(self.topic.get_absolute_url()), 'aria-pressed="true"')
         r = self.client.post(f'/comments/{c.pk}/vote/', {'value': '5'}, follow=True)
         self.assertContains(r, 'Geçersiz oy.')
 

@@ -9,11 +9,11 @@
 {% else %}
   <form method="post">{% csrf_token %}
     {{ form }}
-    <button>Uygula</button>
+    <button class="primary">Uygula</button>
   </form>
   <p><small>Hesap yalnızca sahte hesapta kapatılır: süren oylamalardaki oyları ve bütün ▲/▼ oyları silinir,
     süren önerileri iptal olur. Hesabı yeniden açmak bunları geri getirmez.</small></p>
 {% endif %}
 <h2>Geçmiş</h2>
-<ul>{% for a in history %}{% include "moderation/_action.html" %}{% empty %}<li>Kayıt yok.</li>{% endfor %}</ul>
+<ul class="list">{% for a in history %}{% include "moderation/_action.html" %}{% empty %}<li>Kayıt yok.</li>{% endfor %}</ul>
 {% endblock %}

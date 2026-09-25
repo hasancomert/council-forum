@@ -4,6 +4,6 @@
 {# action yok: form ?next= taşıyan bu adrese gönderilir #}
 <form method="post">{% csrf_token %}
   {{ form }}
-  <button>Kaydet</button> <a href="{{ back }}">Vazgeç</a>
+  <p class="links"><button class="primary">Kaydet</button> <a href="{{ back }}">Vazgeç</a></p>
 </form>
 {% endblock %}

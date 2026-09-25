@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Moderasyon</h1>
-<p>{{ kind|capfirst }}: <a href="{{ target.get_absolute_url }}">{{ target }}</a>{% if target.is_hidden %} <span class="badge">gizli</span>{% endif %}</p>
+<p>{{ kind|capfirst }}: <a href="{{ target.get_absolute_url }}">{{ target }}</a>{% if target.is_hidden %} <span class="badge hidden">gizli</span>{% endif %}</p>
 <p>Sahibi: {% if owner %}<a href="{% url 'mod_user' owner.pk %}">{{ owner }}</a>{% else %}silinmiş üye{% endif %}</p>
 {% if reports %}
-  <form method="post">{% csrf_token %}
+  <form method="post" class="notice">{% csrf_token %}
     Açık şikayet: {{ reports }}. Gizlemek şikayetleri kapatır; yersizse
     <button name="dismiss" value="1">gizlemeden kapat</button> (kayda düşmez).
   </form>
@@ -12,12 +12,12 @@
 {% if allowed %}
   <form method="post">{% csrf_token %}
     {{ form }}
-    <button>{% if target.is_hidden %}Gizlemeyi kaldır{% else %}Gizle{% endif %}</button>
+    <button class="primary">{% if target.is_hidden %}Gizlemeyi kaldır{% else %}Gizle{% endif %}</button>
   </form>
   {% if target.status == "voting" %}<p><small>Süren öneri gizlenince iptal olur; gizleme kaldırılsa da iptal kalır.</small></p>{% endif %}
 {% else %}
   <p>Bu içeriğe işlem yapamazsın: sahibi sensin, bir yönetici ya da süper kullanıcı.</p>
 {% endif %}
 <h2>Geçmiş</h2>
-<ul>{% for a in history %}{% include "moderation/_action.html" %}{% empty %}<li>Kayıt yok.</li>{% endfor %}</ul>
+<ul class="list">{% for a in history %}{% include "moderation/_action.html" %}{% empty %}<li>Kayıt yok.</li>{% endfor %}</ul>
 {% endblock %}

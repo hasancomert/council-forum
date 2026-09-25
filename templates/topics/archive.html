@@ -2,11 +2,11 @@
 {% block content %}
 <h1>Silinen konular</h1>
 <p>Kapalı konular ana sayfanın <a href="{% url 'home' %}?tab=closed">Kapalı</a> sekmesinde.</p>
-<ul>
+<ul class="list">
   {% for topic in page %}
     <li>
-      {% if topic.parent %}{{ topic.parent }} › {% endif %}{{ topic.title }} · {{ topic.created_at|date:"j F Y" }}
-      {% if user.can_vote %}· <a href="{% url 'proposal_new' 'undo' topic.pk %}">geri getirmeyi öner</a>{% endif %}
+      {% if topic.parent %}{{ topic.parent }} › {% endif %}{{ topic.title }} <small>{{ topic.created_at|date:"j F Y" }}</small>
+      {% if user.can_vote %}<br><a href="{% url 'proposal_new' 'undo' topic.pk %}">geri getirmeyi öner</a>{% endif %}
     </li>
   {% empty %}
     <li>Silinen konu yok.</li>
