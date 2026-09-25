@@ -4,17 +4,26 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% if title %}{{ title }} · {% endif %}Forum</title>
+  <style>
+    body { max-width: 48rem; margin: 0 auto; padding: 0 1rem; font-family: system-ui, sans-serif; line-height: 1.5; }
+    form.inline { display: inline; }
+    .messages .error { color: #b00020; }
+    .messages .success { color: #1b5e20; }
+  </style>
 </head>
 <body>
   <nav>
     <a href="{% url 'home' %}">Forum</a>
     {% if user.is_authenticated %}
       {{ user.username }}
-      <form method="post" action="{% url 'logout' %}" style="display:inline">{% csrf_token %}<button>Çıkış</button></form>
+      <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button>Çıkış</button></form>
     {% else %}
       <a href="{% url 'login' %}">Giriş</a> <a href="{% url 'signup' %}">Kayıt ol</a>
     {% endif %}
   </nav>
+  {% if messages %}
+    <ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>
+  {% endif %}
   <main>{% block content %}{% endblock %}</main>
 </body>
 </html>
