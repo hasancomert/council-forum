@@ -7,7 +7,7 @@ from django.core.paginator import Paginator
 from django.db.models import Count, Q
 
 from ..forms import CommentForm
-from ..models import CommentVote
+from ..models import CommentVote, vote_block
 
 register = template.Library()
 
@@ -34,11 +34,13 @@ def comment_section(context, target):
     if top and user.is_authenticated:
         mine = dict(CommentVote.objects.filter(voter=user, comment__in=top + replies).values_list('comment_id', 'value'))
     groups = defaultdict(list)
-    is_open = target.is_open
+    is_open, why = target.is_open, vote_block(user)
     for c in top + replies:
         c.my_vote = mine.get(c.pk, 0)
         c.masked = c.hidden_from(user)  # gizli metni yalnızca yazarı ve yöneticiler görür
         c.frozen = c.is_hidden or not is_open  # yanıt, oy ve düzenleme yok; yazar yine silebilir
+        # ▲/▼ hep görünür; verilemiyorsa düğmeler soluk ve nedeni yazar (sorgu yok)
+        c.why = why or ('Kendi yorumuna oy verilmez' if c.author_id == user.pk else 'Oylama kapalı' if c.frozen else '')
     for r in replies:
         groups[r.parent_id].append(r)  # yanıtlar hep kronolojik
     for c in top:
@@ -47,7 +49,6 @@ def comment_section(context, target):
         'target': target, 'open': is_open, 'comments': top, 'page': page, 'sort': sort, 'count': n['shown'],
         'ct': ContentType.objects.get_for_model(target).pk,
         'form': CommentForm(auto_id=False),  # sayfada çok form var: tekrarlanan id olmasın
-        'can_vote': user.is_authenticated and user.can_vote,  # kural 1: hesap yaşı
         'can_post': user.is_authenticated and user.can_post,  # engelli yazamaz
         'request': request, 'user': user, 'csrf_token': context.get('csrf_token'),
     }

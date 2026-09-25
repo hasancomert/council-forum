@@ -202,6 +202,13 @@ class VoteTests(CommentTestCase):
         r = self.client.post(f'/comments/{c.pk}/vote/', {'value': '5'}, follow=True)
         self.assertContains(r, 'Geçersiz oy.')
 
+    def test_own_comment_buttons_disabled_with_reason(self):
+        self.comment()
+        self.client.force_login(self.alice)
+        r = self.client.get(self.topic.get_absolute_url())
+        self.assertContains(r, 'title="Kendi yorumuna oy verilmez"')
+        self.assertContains(r, 'aria-label="Artı oy" aria-pressed="false" disabled')
+
     def test_section_in_four_queries(self):
         for i in range(5):
             top = self.comment(f'ana {i}')

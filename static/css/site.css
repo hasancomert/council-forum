@@ -89,6 +89,9 @@ small, .muted { color: var(--muted); font-size: var(--fs-sm); }
 .head h1 { margin: 0; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 
+/* Yalnızca ekran okuyucunun okuduğu metin */
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
 /* Dokunma alanı: görünen boyut küçük olsa da görünmez ::after kenarlardan taşar, hedef en az 44px olur */
 :is(button, .button, .chip, .opts a, .links a, .pages a, .menu a, .actions > a, summary, .topics .title) { position: relative; }
 :is(button, .button, .chip, .opts a, .links a, .pages a, .menu a, .actions > a, summary, .topics .title)::after {
@@ -175,12 +178,15 @@ button, .button {
 button:hover, .button:hover { border-color: var(--accent-line); background: var(--accent-soft); }
 button:active, .button:active { transform: translateY(1px); }
 button[aria-pressed=true] { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }  /* verilen oy */
+button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+button:disabled:hover { border-color: var(--line); background: var(--surface); }
+button[aria-pressed=true]:disabled { opacity: .6; border-color: var(--accent); background: var(--accent); }
 .primary { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
 .primary:hover { border-color: var(--accent-strong); background: var(--accent-strong); }
 button.link { min-height: auto; border: 0; background: none; color: var(--accent); }
 
 /* Çerçeveli bağlantılar: mavi yazı, ince mavi çerçeve; seçili olan dolgulu */
-.chip, .opts a, .opts strong, .links a:not(.button), .pages a {
+.chip, .opts a, .opts strong, .links a:not(.button), .links summary, .pages a {
   display: inline-flex;
   align-items: center;
   gap: var(--s1);
@@ -194,7 +200,12 @@ button.link { min-height: auto; border: 0; background: none; color: var(--accent
   font-weight: 600;
   text-decoration: none;
 }
-.chip:hover, .opts a:hover, .links a:not(.button):hover, .pages a:hover { border-color: var(--accent); background: var(--accent-soft); }
+.chip:hover, .opts a:hover, .links a:not(.button):hover, .links summary:hover, .pages a:hover { border-color: var(--accent); background: var(--accent-soft); }
+.links details[open] > summary { border-color: var(--accent); background: var(--accent-soft); }
+.links details[open] { flex-basis: auto; }  /* özet ilk satırda kalır, seçenekler altında açılır */
+.links details[open] > .links { margin-top: var(--s2); }
+.caret { display: inline-block; transition: transform var(--ease); }
+details[open] > summary .caret { transform: rotate(180deg); }
 .opts strong, .chip[aria-current] { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
 .opts, .links, .pages { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
 .opts { margin-bottom: var(--s3); color: var(--muted); font-size: var(--fs-sm); }
@@ -285,6 +296,8 @@ form.inline { display: inline; }
   vertical-align: middle;
 }
 .badge.hidden, .badge.cancelled { background: var(--danger-soft); color: var(--danger); }
+.badge.pending { background: var(--accent-soft); color: var(--accent); text-decoration: none; }
+a.badge:hover { text-decoration: underline; }
 
 /* Sekmeler: alt çizgili, seçili sekme mavi çizgi */
 .tabs { display: flex; flex-wrap: wrap; margin-bottom: var(--s3); border-bottom: 1px solid var(--line); }
@@ -363,6 +376,8 @@ h1 + .meta { margin: calc(-1 * var(--s2)) 0 var(--s3); }  /* konu ve öneri sayf
   cursor: pointer;
 }
 details > summary::-webkit-details-marker { display: none; }
+.report > summary { padding: 0 .45rem; color: var(--muted); }  /* gri bayrak: asıl işlemlerle yarışmasın */
+.report > summary:hover, .report[open] > summary { background: var(--danger-soft); color: var(--danger); }
 .actions > a:hover, details > summary:hover, details[open] > summary { background: var(--accent-soft); }
 details[open] { flex-basis: 100%; }  /* satırda açılan form tam genişlik */
 details form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin: var(--s2) 0; }

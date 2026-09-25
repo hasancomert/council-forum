@@ -1,0 +1,3 @@
+{# Konu hakkında süren kapatma/silme oylaması: rozet öneriye götürür (t: topics.views.with_pending'den geçmiş konu) #}
+{% if t.closing %}<a class="badge pending" href="{% url 'proposal' 'close' t.closing %}">Kapatma oylamasında</a>{% endif %}
+{% if t.deleting %}<a class="badge pending" href="{% url 'proposal' 'delete' t.deleting %}">Silme oylamasında</a>{% endif %}

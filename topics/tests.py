@@ -10,6 +10,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from comments.models import Comment, CommentVote
+from voting.models import TopicCloseProposal
 from voting.tests import make_user
 
 from .models import Topic, TopicVote
@@ -97,6 +98,29 @@ class TopicVoteTests(TestCase):
         self.topic.refresh_from_db()
         self.assertEqual(self.topic.score, 1)
         self.assertFalse(admin.site.is_registered(TopicVote))  # kimin ne verdiği gizli
+
+    def test_buttons_always_shown_disabled_with_reason(self):
+        url = self.topic.get_absolute_url()
+        cases = [(None, 'Oy vermek için giriş yap'), (self.alice, 'Kendi konuna oy verilmez'),
+                 (make_user('yeni', days=1), 'hesabın en az'), (self.bob, None)]
+        for user, why in cases:
+            with self.subTest(user=user and user.username):
+                self.client.logout() if user is None else self.client.force_login(user)
+                html = self.client.get(url).content.decode()
+                self.assertIn('aria-label="Artı oy"', html)  # ▲ puan ▼ her durumda
+                self.assertEqual('disabled' in html.split('class="vote"')[1].split('</form>')[0], why is not None)
+                if why:
+                    self.assertIn(why, html)
+
+    def test_page_groups_proposals_and_shows_running_close(self):
+        child = Topic.objects.create(title='Alt', parent=self.topic, author=self.alice)
+        p = TopicCloseProposal.objects.create(proposer=self.bob, topic=child)
+        self.client.force_login(self.bob)
+        r = self.client.get(self.topic.get_absolute_url())
+        self.assertContains(r, '<summary>Diğer öneriler')
+        self.assertContains(r, f'href="{p.get_absolute_url()}">Kapatma oylamasında</a>')  # alt konunun satırında
+        self.assertContains(self.client.get(child.get_absolute_url()), 'Kapatma oylamasında')  # kendi başlığında
+        self.assertContains(self.client.get('/?tab=sub'), 'Kapatma oylamasında')
 
 
 class HomeTests(TestCase):

@@ -4,6 +4,7 @@
   <div>
     {% if t.parent and not parent %}<a href="{{ t.parent.get_absolute_url }}">{{ t.parent }}</a> › {% endif %}<a class="title" href="{{ t.get_absolute_url }}">{{ t.title }}</a>
     {% if t.is_locked %}<span class="badge">Kapalı</span>{% endif %}
+    {% include "topics/_pending.html" %}
     <small class="meta">{{ t.n_comments }} yorum{% if t.n_sub %} · {{ t.n_sub }} alt konu{% endif %} · {{ t.created_at|ago }}
       {# üst konudan gelen kapalılıkta bağlantı üst konunun satırında #}
       {% if tab == "closed" and t.is_closed and user.can_vote %} · <a href="{% url 'proposal_new' 'undo' t.pk %}">Yeniden açmayı öner</a>{% endif %}</small>

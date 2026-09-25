@@ -1,7 +1,9 @@
 {% if user.is_moderator %}
   <a href="{% url 'mod_content' ct obj.pk %}">Moderasyon{% if obj.is_hidden %} (gizli){% endif %}</a>
 {% elif can_report %}
-  <details><summary>Şikayet et</summary>
+  {# gri bayrak: asıl işlemlerle yarışmasın; ad ekran okuyucu için gizli metinde, fareyle üzerine gelince title'da #}
+  <details class="report"><summary title="Şikayet et"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4h12l-2.5 4 2.5 4H5"/></svg><span class="sr">Şikayet et</span></summary>
     <form method="post" action="{% url 'report' ct obj.pk %}">{% csrf_token %}
       <input type="hidden" name="next" value="{{ request.get_full_path }}">
       Yöneticilere iletilir; kimliğin gizli kalır. <button>Şikayet et</button>

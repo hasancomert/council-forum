@@ -1,7 +1,8 @@
-{# ▲ puan ▼ formu (yorum ve konu). Değişkenler: url, score, mine (1, −1 ya da 0); işlemden sonra next'e dönülür #}
-<form method="post" action="{{ url }}" class="vote">{% csrf_token %}
+{# ▲ puan ▼ (yorum ve konu). url, score, mine (1, −1, 0); why: oy verilemiyorsa nedeni (düğmeler soluk, üzerine gelince yazar) #}
+<form method="post" action="{{ url }}" class="vote"{% if why %} title="{{ why }}"{% endif %}>{% csrf_token %}
   <input type="hidden" name="next" value="{{ request.get_full_path }}">
-  <button name="value" value="1" title="Artı oy" aria-label="Artı oy" aria-pressed="{% if mine == 1 %}true{% else %}false{% endif %}">▲</button>
+  <button name="value" value="1" aria-label="Artı oy" aria-pressed="{% if mine == 1 %}true{% else %}false{% endif %}"{% if why %} disabled{% else %} title="Artı oy"{% endif %}>▲</button>
   <output title="puan">{{ score }}</output>
-  <button name="value" value="-1" title="Eksi oy" aria-label="Eksi oy" aria-pressed="{% if mine == -1 %}true{% else %}false{% endif %}">▼</button>
+  <button name="value" value="-1" aria-label="Eksi oy" aria-pressed="{% if mine == -1 %}true{% else %}false{% endif %}"{% if why %} disabled{% else %} title="Eksi oy"{% endif %}>▼</button>
+  {% if why %}<span class="sr">{{ why }}</span>{% endif %}
 </form>

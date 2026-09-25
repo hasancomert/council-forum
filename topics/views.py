@@ -1,12 +1,15 @@
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Count, OuterRef, Q
+from django.db.models import Count, OuterRef, Q, Subquery
 from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from comments.models import vote_block
 from comments.views import updown
 from config.utils import back
+from voting.models import BaseProposal, TopicCloseProposal, TopicDeleteProposal
 
 from .models import SORTS, Topic, TopicVote, count_of
 
@@ -17,6 +20,17 @@ TABS = {
     'sub': ('Alt konular', Q(parent__isnull=False, is_closed=False, parent__is_closed=False), 'popular'),
     'closed': ('Kapalı', Q(is_closed=True) | Q(parent__is_closed=True), 'new'),
 }
+def with_pending(qs):
+    """'Kapatma/Silme oylamasında' rozetleri: süren önerinin pk'si (yoksa None). Satır başına alt sorgu,
+    sorgu sayısı artmaz. Görünüm yapar: topics.models voting'i import edemez (voting topics'i import eder).
+    """
+    now = timezone.now()
+    def running(model):
+        return Subquery(model.objects.filter(topic=OuterRef('pk'), status=BaseProposal.Status.VOTING,
+                                             voting_ends_at__gt=now).values('pk')[:1])
+    return qs.annotate(closing=running(TopicCloseProposal), deleting=running(TopicDeleteProposal))
+
+
 SORT_LABELS = {'popular': 'En popüler', 'votes': 'En çok oy', 'new': 'En yeni'}
 
 
@@ -30,7 +44,7 @@ def home(request):
     tab = g.get('tab') if g.get('tab') in tabs else next(iter(tabs))  # adresteki değer yalnızca sözlükte aranır
     _, where, sort = TABS[tab]
     sort = g.get('sort') if g.get('sort') in SORTS else sort
-    qs = qs.filter(where).select_related('parent').ranked(sort)
+    qs = with_pending(qs.filter(where).select_related('parent').ranked(sort))
     if tab == 'main':
         qs = qs.annotate(n_sub=count_of(Topic, parent=OuterRef('pk'), is_deleted=False, is_hidden=False))
     return render(request, 'topics/home.html', {
@@ -52,12 +66,14 @@ def archive(request):
 
 
 def detail(request, pk):
-    topic = get_object_or_404(Topic.objects.existing().select_related('parent'), pk=pk)  # silinmiş 404, gizli açılır
+    topic = get_object_or_404(with_pending(Topic.objects.existing().select_related('parent')), pk=pk)  # silinmiş 404
     user = request.user
     masked = topic.hidden_from(user)  # metni yalnızca sahibi ve yöneticiler görür
     context = {
         'topic': topic, 'masked': masked, 'title': 'Moderasyonla gizlendi' if masked else topic.title,
-        'votable': user.is_authenticated and topic.can_be_voted_by(user),
+        # ▲/▼ hep görünür; verilemiyorsa düğmeler soluk ve nedeni yazar
+        'vote_why': vote_block(user) or ('Kendi konuna oy verilmez' if topic.author_id == user.pk
+                                         else '' if topic.is_open else 'Oylama kapalı'),
         # a and b or 0: giriş yoksa ya da oy yoksa 0
         'my_vote': user.is_authenticated and TopicVote.objects.filter(
             topic=topic, voter=user).values_list('value', flat=True).first() or 0,
@@ -65,7 +81,7 @@ def detail(request, pk):
     if not topic.parent_id:  # ana konu: ilk TOPICS_PER_PAGE açık alt konu; gerisi ana sayfada ?parent= ile
         subs, open_q, closed_q = topic.children.visible(), TABS['sub'][1], TABS['closed'][1]
         context['n_subs'] = subs.aggregate(open=Count('pk', filter=open_q), closed=Count('pk', filter=closed_q))
-        context['subs'] = subs.filter(open_q).ranked('popular')[:settings.FORUM['TOPICS_PER_PAGE']]
+        context['subs'] = with_pending(subs.filter(open_q).ranked('popular'))[:settings.FORUM['TOPICS_PER_PAGE']]
     return render(request, 'topics/detail.html', context)
 
 

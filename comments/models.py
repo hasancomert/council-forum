@@ -55,6 +55,19 @@ class Comment(Hideable):
                 and self.target.is_open)
 
 
+def vote_block(user):
+    """▲/▼ verilemiyorsa kullanıcıya bağlı nedeni (düğme soluk, üzerine gelince yazar), verebiliyorsa ''.
+    Hedefe bağlı nedenleri (kendi içeriği, kapalı hedef) çağıran ekler.
+    """
+    if not user.is_authenticated:
+        return 'Oy vermek için giriş yap'
+    if user.is_banned:
+        return 'Engelin sürerken oy veremezsin'
+    if not user.can_vote:
+        return f"Oy vermek için hesabın en az {settings.FORUM['MIN_ACCOUNT_AGE_DAYS']} günlük olmalı"
+    return ''
+
+
 class UpDownVote(models.Model):
     """▲/▼ oyunun ortak atası (CommentVote, topics.TopicVote). Karar oyu (voting.Vote) değil: ağırlık
     yok (kural 2), puan herkese açık ve anında güncellenir, aktif üye sayımına girmez.
