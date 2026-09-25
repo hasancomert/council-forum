@@ -8,7 +8,7 @@
     {# div: HTML'de <p> içine <form> konamaz, tarayıcı paragrafı erken kapatır #}
     <div class="meta"><strong>{{ c.author|default:"silinmiş üye" }}</strong>
       <a href="#c{{ c.pk }}">{{ c.created_at|date:"j F Y H:i" }}</a>{% if c.edited_at %} <span>düzenlendi</span>{% endif %}
-      {% if c.is_hidden %}<span class="badge hidden">gizli</span>{% endif %}
+      {% if c.is_hidden %}<span class="badge hidden">Gizli</span>{% endif %}
       {% if not c.frozen and can_vote and user != c.author %}
         {% url 'comment_vote' c.pk as url %}{% include "_vote.html" with score=c.score mine=c.my_vote %}
       {% else %}<span>puan <strong>{{ c.score }}</strong></span>{% endif %}</div>

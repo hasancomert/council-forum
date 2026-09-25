@@ -2,8 +2,8 @@
   <h2>Yorumlar ({{ count }})</h2>
   {% if comments %}
     <p class="opts">Sırala:
-      {% if sort == "new" %}<a href="?sort=top#yorumlar">en çok oy</a> <strong>en yeni</strong>
-      {% else %}<strong>en çok oy</strong> <a href="?sort=new#yorumlar">en yeni</a>{% endif %}
+      {% if sort == "new" %}<a href="?sort=top#yorumlar">En çok oy</a> <strong>En yeni</strong>
+      {% else %}<strong>En çok oy</strong> <a href="?sort=new#yorumlar">En yeni</a>{% endif %}
     </p>
   {% endif %}
   {% for c in comments %}

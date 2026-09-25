@@ -3,8 +3,8 @@
 {% block content %}
 <p><a href="{% url 'proposals' %}">← Açık öneriler</a></p>
 <h1>{% if masked %}Moderasyonla gizlendi{% else %}{{ proposal }}{% endif %}
-  {% if proposal.status == "cancelled" %}<span class="badge cancelled">iptal</span>{% endif %}
-  {% if proposal.is_hidden and not masked %}<span class="badge hidden">gizli</span>{% endif %}</h1>
+  {% if proposal.status == "cancelled" %}<span class="badge cancelled">İptal</span>{% endif %}
+  {% if proposal.is_hidden and not masked %}<span class="badge hidden">Gizli</span>{% endif %}</h1>
 {# div: şikayet formu (details) <p> içine konamaz #}
 <div class="meta"><span>{{ proposal.kind|capfirst }}</span> <span>{{ proposal.proposer|default:"silinmiş üye" }}</span>
   <span>{{ proposal.created_at|date:"j F Y H:i" }}</span> {% mod_links proposal %}</div>

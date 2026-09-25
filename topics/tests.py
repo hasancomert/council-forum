@@ -147,7 +147,7 @@ class HomeTests(TestCase):
         self.client.force_login(self.bob)
         r = self.client.get('/?tab=closed')
         self.assertContains(r, 'class="badge"', count=3)
-        self.assertContains(r, 'yeniden açmayı öner', count=2)  # miras kapalılıkta bağlantı üst konunun satırında
+        self.assertContains(r, 'Yeniden açmayı öner', count=2)  # miras kapalılıkta bağlantı üst konunun satırında
         self.assertContains(r, f'/proposals/new/undo/{closed.pk}/')
         self.assertEqual(self.titles(f'/?parent={main.pk}'), ['Alt'])  # süzgeçte varsayılan: alt konular
         self.assertEqual(self.titles(f'/?tab=closed&parent={main.pk}'), ['Kapalı alt'])
@@ -178,8 +178,8 @@ class HomeTests(TestCase):
         Topic.objects.create(title='Kapalı alt', parent=main, is_closed=True)
         r = self.client.get(main.get_absolute_url())
         self.assertEqual(len(r.context['subs']), settings.FORUM['TOPICS_PER_PAGE'])
-        self.assertContains(r, f'/?tab=sub&amp;parent={main.pk}">tüm alt konular (22)')
-        self.assertContains(r, f'/?tab=closed&amp;parent={main.pk}">kapalı alt konular (1)')
+        self.assertContains(r, f'/?tab=sub&amp;parent={main.pk}">Tüm alt konular (22)')
+        self.assertContains(r, f'/?tab=closed&amp;parent={main.pk}">Kapalı alt konular (1)')
 
     def test_archive_lists_only_deleted(self):
         Topic.objects.create(title='KapalıX', is_closed=True)

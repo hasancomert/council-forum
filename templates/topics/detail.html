@@ -4,8 +4,8 @@
 {% block content %}
 {% if topic.parent %}<p><a href="{{ topic.parent.get_absolute_url }}">← {{ topic.parent }}</a></p>{% endif %}
 <h1>{% if masked %}Moderasyonla gizlendi{% else %}{{ topic.title }}{% endif %}
-  {% if topic.is_locked %}<span class="badge">kapalı</span>{% endif %}
-  {% if topic.is_hidden and not masked %}<span class="badge hidden">gizli</span>{% endif %}</h1>
+  {% if topic.is_locked %}<span class="badge">Kapalı</span>{% endif %}
+  {% if topic.is_hidden and not masked %}<span class="badge hidden">Gizli</span>{% endif %}</h1>
 <div class="meta">
   {% if votable %}{% url 'topic_vote' topic.pk as url %}{% include "_vote.html" with score=topic.score mine=my_vote %}
   {% else %}<span>puan <strong>{{ topic.score }}</strong></span>{% endif %}
@@ -36,8 +36,8 @@
     {% for t in subs %}{% include "topics/_row.html" with parent=topic %}{% empty %}<li class="empty">Açık alt konu yok.</li>{% endfor %}
   </ul>
   <p class="links">
-    {% if n_subs.open > subs|length %}<a href="{% url 'home' %}?tab=sub&amp;parent={{ topic.pk }}">tüm alt konular ({{ n_subs.open }}) →</a>{% endif %}
-    {% if n_subs.closed %}<a href="{% url 'home' %}?tab=closed&amp;parent={{ topic.pk }}">kapalı alt konular ({{ n_subs.closed }}) →</a>{% endif %}
+    {% if n_subs.open > subs|length %}<a href="{% url 'home' %}?tab=sub&amp;parent={{ topic.pk }}">Tüm alt konular ({{ n_subs.open }}) →</a>{% endif %}
+    {% if n_subs.closed %}<a href="{% url 'home' %}?tab=closed&amp;parent={{ topic.pk }}">Kapalı alt konular ({{ n_subs.closed }}) →</a>{% endif %}
   </p>
 {% endif %}
 {% comment_section topic %}

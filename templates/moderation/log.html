@@ -6,14 +6,14 @@
   {% for m in moderators %}<a href="{% url 'mod_log' %}?user={{ m.username|urlencode }}">{{ m }}</a>{% if not forloop.last %}, {% endif %}
   {% empty %}henüz yok{% endfor %}</p>
 <form method="get" class="filters">
-  <select name="kind" aria-label="işlem"><option value="">tüm işlemler</option>
-    {% for v, label in kinds %}<option value="{{ v }}"{% if request.GET.kind == v %} selected{% endif %}>{{ label }}</option>{% endfor %}
+  <select name="kind" aria-label="işlem"><option value="">Tüm işlemler</option>
+    {% for v, label in kinds %}<option value="{{ v }}"{% if request.GET.kind == v %} selected{% endif %}>{{ label|capfirst }}</option>{% endfor %}
   </select>
-  <select name="reason" aria-label="gerekçe"><option value="">tüm gerekçeler</option>
-    {% for v, label in reasons %}<option value="{{ v }}"{% if request.GET.reason == v %} selected{% endif %}>{{ label }}</option>{% endfor %}
+  <select name="reason" aria-label="gerekçe"><option value="">Tüm gerekçeler</option>
+    {% for v, label in reasons %}<option value="{{ v }}"{% if request.GET.reason == v %} selected{% endif %}>{{ label|capfirst }}</option>{% endfor %}
   </select>
-  <input name="user" value="{{ request.GET.user }}" placeholder="takma ad" aria-label="takma ad">
-  <button>Süz</button>{% if request.GET %} <a href="{% url 'mod_log' %}">temizle</a>{% endif %}
+  <input name="user" value="{{ request.GET.user }}" placeholder="Takma ad" aria-label="takma ad">
+  <button>Süz</button>{% if request.GET %} <a href="{% url 'mod_log' %}">Temizle</a>{% endif %}
 </form>
 <ul class="list">{% for a in page %}{% include "moderation/_action.html" %}{% empty %}<li>Kayıt yok.</li>{% endfor %}</ul>
 {% include "_pages.html" %}

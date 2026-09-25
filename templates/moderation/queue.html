@@ -8,8 +8,8 @@
       <strong>{{ i.n }} şikayet</strong> · {{ i.since|timesince }} önce
       {% if i.target %}
         · {{ i.kind|capfirst }}: {{ i.target }} · {{ i.target.owner|default:"silinmiş üye" }}
-        <br><a href="{% url 'goto' i.content_type i.object_id %}">sayfası</a>
-        · <a href="{% url 'mod_content' i.content_type i.object_id %}">incele</a>
+        <br><a href="{% url 'goto' i.content_type i.object_id %}">Sayfası</a>
+        · <a href="{% url 'mod_content' i.content_type i.object_id %}">İncele</a>
       {% else %}
         · içerik bulunamadı
       {% endif %}

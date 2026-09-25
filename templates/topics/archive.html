@@ -6,7 +6,7 @@
   {% for topic in page %}
     <li>
       {% if topic.parent %}{{ topic.parent }} › {% endif %}{{ topic.title }} <small>{{ topic.created_at|date:"j F Y" }}</small>
-      {% if user.can_vote %}<br><a href="{% url 'proposal_new' 'undo' topic.pk %}">geri getirmeyi öner</a>{% endif %}
+      {% if user.can_vote %}<br><a href="{% url 'proposal_new' 'undo' topic.pk %}">Geri getirmeyi öner</a>{% endif %}
     </li>
   {% empty %}
     <li>Silinen konu yok.</li>

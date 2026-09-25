@@ -245,7 +245,7 @@ class PanelTests(VotingTestCase):
             TopicOpenProposal.objects.create(proposer=self.proposer, title=f'Öneri {i}')
         panel = self.panel()
         self.assertEqual(panel.count('<li>'), 10)
-        self.assertIn('tümü (12)', panel)
+        self.assertIn('Tümü (12)', panel)
 
     def test_unvoted_marker(self):
         p = TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic)

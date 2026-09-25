@@ -8,6 +8,7 @@ from unittest.mock import patch
 from django.contrib.staticfiles import finders
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management.utils import get_random_secret_key
+from django.template import Context, Template
 from django.template.loader import render_to_string
 from django.test import Client, SimpleTestCase, TestCase
 
@@ -73,6 +74,11 @@ class PageTests(TestCase):
         topic = Topic.objects.create(title='Konu')
         for url in ('/', topic.get_absolute_url(), '/accounts/signup/', '/mod/log/', '/yok/'):
             self.assertNotRegex(self.client.get(url).content.decode(), r'style=|<style|<script>', url)
+
+
+class TemplateFilterTests(SimpleTestCase):
+    def test_turkish_capfirst_overrides_builtin(self):
+        self.assertEqual(Template('{{ "istek"|capfirst }} {{ "ılık"|capfirst }}').render(Context()), 'İstek Ilık')
 
 
 class PwaTests(TestCase):

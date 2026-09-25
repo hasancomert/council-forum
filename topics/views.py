@@ -17,7 +17,7 @@ TABS = {
     'sub': ('Alt konular', Q(parent__isnull=False, is_closed=False, parent__is_closed=False), 'popular'),
     'closed': ('Kapalı', Q(is_closed=True) | Q(parent__is_closed=True), 'new'),
 }
-SORT_LABELS = {'popular': 'en popüler', 'votes': 'en çok oy', 'new': 'en yeni'}
+SORT_LABELS = {'popular': 'En popüler', 'votes': 'En çok oy', 'new': 'En yeni'}
 
 
 def home(request):
