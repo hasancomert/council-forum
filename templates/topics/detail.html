@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load comments %}
 {% block content %}
 {% if topic.parent %}<p><a href="{{ topic.parent.get_absolute_url }}">← {{ topic.parent }}</a></p>{% endif %}
 <h1>{{ topic.title }}{% if topic.is_locked %} (Kapalı){% endif %}</h1>
@@ -27,4 +28,5 @@
     {% endfor %}
   </ul>
 {% endif %}
+{% comment_section topic %}
 {% endblock %}

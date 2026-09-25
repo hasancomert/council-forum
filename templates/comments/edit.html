@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Yorumu düzenle</h1>
+<form method="post">{% csrf_token %}
+  {{ form }}
+  <button>Kaydet</button> <a href="{{ comment.get_absolute_url }}">Vazgeç</a>
+</form>
+{% endblock %}
