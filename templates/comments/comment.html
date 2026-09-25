@@ -3,8 +3,14 @@
     <p><em>Bu yorum silindi.</em></p>
   {% else %}
     <p><strong>{{ c.author|default:"silinmiş üye" }}</strong> ·
-      <a href="#c{{ c.pk }}">{{ c.created_at|date:"j F Y H:i" }}</a>{% if c.edited_at %} · düzenlendi{% endif %}
-      · puan {{ c.score }}</p>
+      <a href="#c{{ c.pk }}">{{ c.created_at|date:"j F Y H:i" }}</a>{% if c.edited_at %} · düzenlendi{% endif %} ·
+      {% if open and can_vote and user != c.author %}
+        <form method="post" action="{% url 'comment_vote' c.pk %}" class="inline vote">{% csrf_token %}
+          <button name="value" value="1" title="Artı oy"{% if c.my_vote == 1 %} class="on" aria-pressed="true"{% endif %}>▲</button>
+          {{ c.score }}
+          <button name="value" value="-1" title="Eksi oy"{% if c.my_vote == -1 %} class="on" aria-pressed="true"{% endif %}>▼</button>
+        </form>
+      {% else %}puan {{ c.score }}{% endif %}</p>
     <p>{{ c.body|urlize|linebreaksbr }}</p>
     {% if user.is_authenticated %}
       {% if open %}
