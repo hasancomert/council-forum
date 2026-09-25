@@ -1,0 +1,23 @@
+# /etc/caddy/Caddyfile — forum.example yerine kendi alan adını yaz.
+# Caddy HTTPS sertifikasını (Let's Encrypt) kendisi alır ve yeniler, HTTP'yi HTTPS'e yönlendirir.
+
+www.forum.example {
+	redir https://forum.example{uri} permanent
+}
+
+forum.example {
+	encode zstd gzip
+	# gunicorn. Caddy X-Forwarded-Proto ekler: Django isteğin HTTPS olduğunu buradan bilir.
+	reverse_proxy 127.0.0.1:8000
+
+	# 5651 trafik kaydı: kaynak IP ve port, tarih-saat, istenen adres, yöntem, sonuç, tarayıcı. Çerez ve
+	# Authorization başlıkları Caddy'de varsayılan olarak kayda girmez. 400 gün saklanır (kanun: 1-2 yıl).
+	log {
+		output file /var/log/caddy/forum-access.log {
+			roll_size 50MiB
+			roll_keep 10000
+			roll_keep_for 9600h
+		}
+		format json
+	}
+}

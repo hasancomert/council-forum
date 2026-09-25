@@ -1,0 +1,19 @@
+# /etc/systemd/system/forum.service — uygulama (gunicorn). Loglar: journalctl -u forum
+[Unit]
+Description=Forum (gunicorn)
+After=network.target postgresql.service
+
+[Service]
+User=forum
+Group=forum
+WorkingDirectory=/srv/forum
+# Yalnızca yerelden dinler: dışarıdan yalnızca Caddy üzerinden erişilir. 2 süreç x 2 iş parçacığı küçük sunucuya yeter.
+ExecStart=/srv/forum/.venv/bin/gunicorn config.wsgi --bind 127.0.0.1:8000 --workers 2 --threads 2
+Restart=on-failure
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

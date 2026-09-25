@@ -1,0 +1,7 @@
+# 15 dakikada bir. Sunucu kapalı kaldıysa açılınca kaçırılanı hemen çalıştırır (Persistent).
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+
+[Install]
+WantedBy=timers.target

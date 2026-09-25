@@ -1,0 +1,9 @@
+# Süresi dolan önerileri sonuçlandırır (kural 3, 4). forum-finalize.timer çalıştırır.
+[Unit]
+Description=Forum: süresi dolan önerileri sonuçlandır
+
+[Service]
+Type=oneshot
+User=forum
+WorkingDirectory=/srv/forum
+ExecStart=/srv/forum/.venv/bin/python manage.py finalize_proposals

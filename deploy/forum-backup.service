@@ -1,0 +1,8 @@
+# Veritabanı yedeği. forum-backup.timer her gece çalıştırır; update.sh de güncellemeden önce çağırır.
+[Unit]
+Description=Forum: veritabanı yedeği
+
+[Service]
+Type=oneshot
+User=forum
+ExecStart=/srv/forum/deploy/backup.sh

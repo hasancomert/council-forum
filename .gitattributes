@@ -1,0 +1,3 @@
+# Sunucuda çalışan dosyalar Windows'ta da LF kalsın (CRLF ile kabuk betiği ve systemd birimi bozulur).
+deploy/** text eol=lf
+*.png binary
