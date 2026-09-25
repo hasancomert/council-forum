@@ -1,4 +1,5 @@
 import json
+import re
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
@@ -36,10 +37,22 @@ class SignupForm(UserCreationForm):
         n = next(v.min_length for v in get_default_password_validators() if hasattr(v, 'min_length'))
         f = self.fields
         f['password1'].label, f['password2'].label = 'Şifre', 'Şifre (tekrar)'  # arayüz "parola" değil "şifre" der
-        f['username'].help_text = 'Herkese görünür: harf, rakam, @ . + - _'
+        f['username'].help_text = 'Herkese görünür: harf, rakam, _ ve -'
+        f['first_name'].help_text = f['last_name'].help_text = 'Kimseye gösterilmez.'
         f['email'].help_text = 'Doğrulama için; kimseye gösterilmez.'
         f['password1'].help_text = f'En az {n} karakter, yalnızca rakam olamaz.'
         f['password2'].help_text = 'Aynı şifreyi yeniden yaz.'
+
+    def clean_username(self):
+        """Taklit olmasın: harf büyüklüğü ve i/ı/I/İ farkı yok sayılır ("Veli"/"veli", "İlker"/"ilker" aynı ad).
+        Tek sorgu: her i türevi [iıIİ] olur, gerisi büyük/küçük harf duyarsız düzenli ifadeyle aranır (iregex;
+        SQLite'ta Python'un re'si, PostgreSQL'de ~*; ikisi de Ş/ş'yi tanır, SQL'in iexact'i SQLite'ta tanımaz).
+        """
+        name = self.cleaned_data['username']
+        pattern = ''.join('[iıIİ]' if c in 'iıIİ' else re.escape(c) for c in name)
+        if User.objects.filter(username__iregex=f'^{pattern}$').exists():
+            raise forms.ValidationError('Bu takma ad ya da çok benzeri alınmış.')
+        return name
 
     def clean_email(self):
         return self.cleaned_data['email'].lower()  # Ali@x.com ile ali@x.com aynı hesap sayılsın

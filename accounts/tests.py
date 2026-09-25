@@ -51,6 +51,18 @@ class SignupTests(TestCase):
         self.signup(username='ali2', email='ALI@example.com')
         self.assertEqual(User.objects.count(), 1)
 
+    def test_username_letters_and_lookalikes(self, _):
+        self.signup()  # ali
+        for name in ('İlker', 'şule'):
+            User.objects.create_user(name, f'{len(name)}{name[-1]}@example.com', None, first_name='A', last_name='B')
+        # benzer ad (harf büyüklüğü, i/ı/I/İ), e-posta ve noktalı ad, Kiril 'е' ile taklit
+        for i, bad in enumerate(('ALİ', 'Alı', 'ilker', 'ILKER', 'Şule', 'ali@x.com', 'a.b', 'vеli')):
+            with self.subTest(bad):
+                self.assertContains(self.signup(username=bad, email=f'k{i}@example.com'), 'errorlist')
+        self.assertEqual(User.objects.count(), 3)
+        self.signup(username='Çağrı_Öz-42', email='c@example.com')
+        self.assertTrue(User.objects.filter(username='Çağrı_Öz-42').exists())
+
     def test_expired_unverified_account_is_freed(self, _):
         self.signup()
         User.objects.update(date_joined=User.objects.get().date_joined

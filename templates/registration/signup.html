@@ -5,6 +5,7 @@
   <p class="muted">Kayıt olmadan önce <a href="{% url 'terms' %}">kullanım şartlarını</a> oku; kişisel verilerinin nasıl
     işlendiği <a href="{% url 'privacy' %}">KVKK aydınlatma metninde</a>. Hesabın var mı? <a href="{% url 'login' %}">Giriş yap</a>.</p>
   {# geniş ekranda iki sütun (site.css .signup): ad-soyad ve şifreler yan yana, CAPTCHA ile düğme aynı satırda #}
+  <noscript><p class="notice error">Robot denetimi (CAPTCHA) için JavaScript gerekli; açmadan kayıt olamazsın.</p></noscript>
   <form method="post" class="signup">{% csrf_token %}
     {{ form }}
     <div class="cf-turnstile" data-sitekey="{{ site_key }}"></div>

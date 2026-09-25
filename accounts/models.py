@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
+from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
 
@@ -11,13 +12,17 @@ class User(AbstractUser):
         MEMBER = 'A', 'Üye'
         EXPERT = 'B', 'Bilirkişi'
 
+    # Takma ad yalnızca Türkçe ve İngilizce harf, rakam, _ ve -: '@ . +' yok (e-posta takma ad olup görünmesin),
+    # başka alfabe yok (Kiril 'е' gibi görünüşte aynı harflerle taklit olmasın). Admin ve createsuperuser da uyar.
+    username_validator = RegexValidator(r'^[0-9A-Za-zÇĞİÖŞÜçğıöşü_-]+\Z', 'Yalnızca harf, rakam, _ ve - kullan.')
+
     # AbstractUser'daki alanların etiketi Türkçe, ad/soyad/e-posta zorunlu yapıldı.
     username = models.CharField(
         'takma ad',
         max_length=150,
         unique=True,
-        validators=[AbstractUser.username_validator],
-        help_text='En fazla 150 karakter: harf, rakam ve @ . + - _',
+        validators=[username_validator],
+        help_text='En fazla 150 karakter: harf, rakam, _ ve -',
     )
     first_name = models.CharField('ad', max_length=150)
     last_name = models.CharField('soyad', max_length=150)
