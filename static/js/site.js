@@ -1,4 +1,9 @@
-// ▲/▼ sayfa yenilemeden (konu ve yorum). Framework yok: sayfadaki bütün form.vote'ları tek dinleyici yakalar.
+// Sitenin tek JS dosyası. Framework yok; JS kapalıysa site aynen çalışır.
+
+// PWA: service worker kökten (/sw.js) kaydedilir ki kapsamı bütün site olsun. Desteklemeyen tarayıcı atlar.
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+
+// ▲/▼ sayfa yenilemeden (konu ve yorum): sayfadaki bütün form.vote'ları tek dinleyici yakalar.
 // Form fetch ile gönderilir; CSRF jetonu formun gizli alanından (FormData) gider. Yanıt JSON değilse ya da
 // hata varsa (oturum düşmüş, konu kapanmış…) form normal gönderilir: sunucu mesajı sayfada gösterir.
 // JS kapalıysa bu dosya hiç çalışmaz, formlar bugünkü gibi çalışır.

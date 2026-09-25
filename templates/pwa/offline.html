@@ -1,0 +1,4 @@
+{% extends "error.html" %}
+{# Service worker önbelleğe alır: kişiye özel hiçbir şey içermemeli (error.html kullanıcıya bakmaz). #}
+{% block title %}Çevrimdışı{% endblock %}
+{% block content %}<h1>Bağlantı yok</h1><p>İnternete bağlı değilsin gibi görünüyor. Bağlanınca sayfayı yenile.</p>{% endblock %}

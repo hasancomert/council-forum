@@ -5,11 +5,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from django.contrib.staticfiles import finders
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management.utils import get_random_secret_key
 from django.template.loader import render_to_string
 from django.test import Client, SimpleTestCase, TestCase
 
+from accounts.models import User
 from topics.models import Topic
 
 from .settings import BASE_DIR, database, env_list, load_env
@@ -70,3 +72,33 @@ class PageTests(TestCase):
         topic = Topic.objects.create(title='Konu')
         for url in ('/', topic.get_absolute_url(), '/accounts/signup/', '/mod/log/', '/yok/'):
             self.assertNotRegex(self.client.get(url).content.decode(), r'style=|<style|<script>', url)
+
+
+class PwaTests(TestCase):
+    def test_manifest_and_icons(self):
+        r = self.client.get('/manifest.webmanifest')
+        self.assertEqual(r['Content-Type'], 'application/manifest+json')
+        m = r.json()
+        self.assertEqual((m['start_url'], m['scope'], m['display']), ('/', '/', 'standalone'))
+        self.assertTrue({'192x192', '512x512'} <= {i['sizes'] for i in m['icons']})  # yüklenebilirlik için
+        for icon in m['icons']:
+            self.assertTrue(finders.find(icon['src'].removeprefix('/static/')), icon['src'])
+        page = self.client.get('/')
+        self.assertContains(page, 'rel="manifest" href="/manifest.webmanifest"')
+        self.assertContains(page, 'name="theme-color"', count=2)  # açık ve koyu tema
+
+    def test_service_worker_from_root_caches_only_static_and_offline(self):
+        r = self.client.get('/sw.js')
+        self.assertEqual((r.status_code, r['Content-Type']), (200, 'text/javascript'))
+        sw = r.content.decode()
+        self.assertIn("const OFFLINE = '/offline/';", sw)
+        self.assertIn('/static/css/site.css', sw)
+        self.assertIn("request.method !== 'GET'", sw)  # POST (oy, yorum) hiç önbelleğe girmez
+
+    def test_offline_page_is_not_personal(self):
+        """Service worker bu sayfayı önbelleğe alır: giriş yapmış kullanıcının adı ve oturumu içinde olmamalı."""
+        self.client.force_login(User.objects.create_user('gizliad', email='g@example.com'))
+        r = self.client.get('/offline/')
+        self.assertContains(r, 'Bağlantı yok')
+        self.assertNotContains(r, 'gizliad')
+        self.assertNotIn('Cookie', r.get('Vary', ''))  # yanıt oturuma göre değişmiyor
