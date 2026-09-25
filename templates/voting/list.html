@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Açık öneriler</h1>
+<ul>
+  {% for p in proposals %}
+    <li>
+      <a href="{{ p.get_absolute_url }}">{{ p }}</a> · {{ p.kind }} ·
+      {% if p.in_discussion %}tartışmada{% else %}{{ p.participants }} katılım{% endif %} ·
+      {{ p.voting_ends_at|timeuntil }} kaldı
+    </li>
+  {% empty %}
+    <li>Şu an oylanan öneri yok.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

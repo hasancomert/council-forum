@@ -97,6 +97,10 @@ class BaseProposal(models.Model):
         return reverse('proposal', args=[self.SLUG, self.pk])
 
     @property
+    def kind(self):
+        return self._meta.verbose_name  # şablonlar _meta'ya erişemez
+
+    @property
     def is_open(self):
         """Oylama bitene kadar açık (istekte tartışma + oylama): yorum ve yorum oyu buna bakar."""
         return self.status == self.Status.VOTING and timezone.now() < self.voting_ends_at

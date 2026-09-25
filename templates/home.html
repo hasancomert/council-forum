@@ -4,6 +4,7 @@
   <p>Merhaba {{ user.first_name }}. Rol: {{ user.get_role_display }}, oy ağırlığı: {{ user.vote_weight }},
      oy hakkı: {{ user.can_vote|yesno:"var,henüz yok" }}.</p>
 {% endif %}
+<p><a href="{% url 'proposals' %}">Açık öneriler</a></p>
 <h1>Konular</h1>
 <ul>
   {% for topic in topics %}
