@@ -1,0 +1,27 @@
+<article id="c{{ c.pk }}" class="comment{% if reply %} reply{% endif %}">
+  {% if c.is_deleted %}
+    <p><em>Bu yorum silindi.</em></p>
+  {% else %}
+    <p><strong>{{ c.author|default:"silinmiş üye" }}</strong> ·
+      <a href="#c{{ c.pk }}">{{ c.created_at|date:"j F Y H:i" }}</a>{% if c.edited_at %} · düzenlendi{% endif %}
+      · puan {{ c.score }}</p>
+    <p>{{ c.body|urlize|linebreaksbr }}</p>
+    {% if user.is_authenticated %}
+      {% if open %}
+        <details><summary>Yanıtla</summary>
+          <form method="post" action="{% url 'comment_add' ct target.pk %}">{% csrf_token %}
+            <input type="hidden" name="parent" value="{{ c.pk }}">{{ form.body }}<button>Yanıtla</button>
+          </form>
+        </details>
+      {% endif %}
+      {% if user == c.author %}
+        {% if open %}<a href="{% url 'comment_edit' c.pk %}">Düzenle</a>{% endif %}
+        <details><summary>Sil</summary>
+          <form method="post" action="{% url 'comment_delete' c.pk %}">{% csrf_token %}
+            Silinen yorum geri alınamaz. <button>Evet, sil</button>
+          </form>
+        </details>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+</article>

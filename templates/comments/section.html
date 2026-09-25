@@ -1,0 +1,22 @@
+<section id="yorumlar">
+  <h2>Yorumlar ({{ count }})</h2>
+  {% if comments %}
+    <p>Sırala:
+      {% if sort == "new" %}<a href="?sort=top#yorumlar">en çok oy</a> · <strong>en yeni</strong>
+      {% else %}<strong>en çok oy</strong> · <a href="?sort=new#yorumlar">en yeni</a>{% endif %}
+    </p>
+  {% endif %}
+  {% for c in comments %}
+    {% include "comments/comment.html" %}
+    {% for r in c.children %}{% include "comments/comment.html" with c=r reply=True %}{% endfor %}
+  {% endfor %}
+  {% if not open %}
+    <p>Yorumlar kapalı.</p>
+  {% elif user.is_authenticated %}
+    <form method="post" action="{% url 'comment_add' ct target.pk %}">{% csrf_token %}
+      {{ form.body }}<button>Yorum yaz</button>
+    </form>
+  {% else %}
+    <p><a href="{% url 'login' %}?next={{ request.path|urlencode }}">Giriş yap</a>, yorum yaz.</p>
+  {% endif %}
+</section>
