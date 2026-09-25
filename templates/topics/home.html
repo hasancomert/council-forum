@@ -7,6 +7,7 @@
     <a class="button" href="{% querystring parent=None page=None %}" title="Süzgeci kaldır" aria-label="Süzgeci kaldır">✕</a></h1>
 {% else %}
   <h1>Konular</h1>
+  <p class="lead">Burada kararları üyeler verir: konu açmak, düzenlemek ve kapatmak oylamayla olur.</p>
 {% endif %}
 <nav class="tabs" aria-label="Sekmeler">
   {% for key, label in tabs.items %}

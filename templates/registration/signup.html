@@ -1,12 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Kayıt ol</h1>
-<p>Kayıt olmadan önce <a href="{% url 'terms' %}">kullanım şartlarını</a> oku. Kişisel verilerinin nasıl işlendiği
-  <a href="{% url 'privacy' %}">KVKK aydınlatma metninde</a>.</p>
-<form method="post">{% csrf_token %}
-  {{ form }}
-  <div class="cf-turnstile" data-sitekey="{{ site_key }}"></div>
-  <button class="primary">Kayıt ol</button>
-</form>
+<div class="auth wide">
+  <h1>Kayıt ol</h1>
+  <p class="muted">Kayıt olmadan önce <a href="{% url 'terms' %}">kullanım şartlarını</a> oku; kişisel verilerinin nasıl
+    işlendiği <a href="{% url 'privacy' %}">KVKK aydınlatma metninde</a>. Hesabın var mı? <a href="{% url 'login' %}">Giriş yap</a>.</p>
+  {# geniş ekranda iki sütun (site.css .signup): ad-soyad ve şifreler yan yana, CAPTCHA ile düğme aynı satırda #}
+  <form method="post" class="signup">{% csrf_token %}
+    {{ form }}
+    <div class="cf-turnstile" data-sitekey="{{ site_key }}"></div>
+    <button class="primary">Kayıt ol</button>
+  </form>
+</div>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 {% endblock %}

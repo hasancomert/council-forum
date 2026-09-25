@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Giriş</h1>
-<form method="post">{% csrf_token %}{{ form }}<button class="primary">Giriş yap</button></form>
-<p class="links"><a href="{% url 'password_reset' %}">Şifremi unuttum</a> <a href="{% url 'signup' %}">Kayıt ol</a></p>
+<div class="auth">
+  <h1>Giriş</h1>
+  <form method="post">{% csrf_token %}{{ form }}<button class="primary">Giriş yap</button></form>
+  <p class="links"><a href="{% url 'password_reset' %}">Şifremi unuttum</a> <a href="{% url 'signup' %}">Kayıt ol</a></p>
+</div>
 {% endblock %}

@@ -15,18 +15,21 @@
 <body>
   <header class="top">
     <a class="brand" href="{% url 'home' %}"><img src="{% static 'img/logo.svg' %}" alt="" width="32" height="32">Forum</a>
+    {# bulunduğun sayfa aria-current ile işaretlenir (CSS vurgular); 404'te resolver_match yok, boş kalır #}
+    {% with here=request.resolver_match.url_name %}
     <nav class="menu" aria-label="Ana menü">
-      <a href="{% url 'proposals' %}">Öneriler</a>
-      <a href="{% url 'mod_log' %}">Moderasyon</a>
-      {% if user.is_moderator %}<a href="{% url 'mod_queue' %}">Şikayetler</a>{% endif %}
+      <a href="{% url 'proposals' %}"{% if here == 'proposals' %} aria-current="page"{% endif %}>Öneriler</a>
+      <a href="{% url 'mod_log' %}"{% if here == 'mod_log' %} aria-current="page"{% endif %}>Moderasyon</a>
+      {% if user.is_moderator %}<a href="{% url 'mod_queue' %}"{% if here == 'mod_queue' %} aria-current="page"{% endif %}>Şikayetler</a>{% endif %}
       {% if user.is_authenticated %}
-        <a class="me" href="{% url 'account' %}" title="Hesabım">{{ user.username }}</a>
+        <a class="me" href="{% url 'account' %}" title="Hesabım"{% if here == 'account' %} aria-current="page"{% endif %}>{{ user.username }}</a>
         <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button class="link">Çıkış</button></form>
       {% else %}
-        <a href="{% url 'login' %}">Giriş</a>
-        <a href="{% url 'signup' %}">Kayıt ol</a>
+        <a href="{% url 'login' %}"{% if here == 'login' %} aria-current="page"{% endif %}>Giriş</a>
+        <a class="button primary" href="{% url 'signup' %}">Kayıt ol</a>
       {% endif %}
     </nav>
+    {% endwith %}
   </header>
   {% if messages %}
     <ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>

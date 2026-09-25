@@ -5,6 +5,7 @@ from urllib.request import urlopen
 from django import forms
 from django.conf import settings
 from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.password_validation import get_default_password_validators
 
 from .models import User
 
@@ -25,7 +26,20 @@ class SignupForm(UserCreationForm):
 
     class Meta(UserCreationForm.Meta):
         model = User
-        fields = ('username', 'first_name', 'last_name', 'email')
+        fields = ('username', 'email', 'first_name', 'last_name')  # geniş ekranda ikişer ikişer yan yana
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Açıklamalar tek satır: yan yana iki alanın satırları hizalı kalsın, sayfa bir ekrana sığsın. Django'nun
+        # dört maddelik parola listesi yerine kısa hâli; en kısa uzunluk AUTH_PASSWORD_VALIDATORS'tan okunur.
+        # Öbür kurallar (yaygın şifre, bilgilere benzerlik) yine denetlenir, ihlalde hata mesajı çıkar.
+        n = next(v.min_length for v in get_default_password_validators() if hasattr(v, 'min_length'))
+        f = self.fields
+        f['password1'].label, f['password2'].label = 'Şifre', 'Şifre (tekrar)'  # arayüz "parola" değil "şifre" der
+        f['username'].help_text = 'Herkese görünür: harf, rakam, @ . + - _'
+        f['email'].help_text = 'Doğrulama için; kimseye gösterilmez.'
+        f['password1'].help_text = f'En az {n} karakter, yalnızca rakam olamaz.'
+        f['password2'].help_text = 'Aynı şifreyi yeniden yaz.'
 
     def clean_email(self):
         return self.cleaned_data['email'].lower()  # Ali@x.com ile ali@x.com aynı hesap sayılsın
