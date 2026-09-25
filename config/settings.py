@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'accounts',
     'topics',
+    'voting',
 ]
 
 MIDDLEWARE = [
@@ -142,4 +143,13 @@ TURNSTILE_SECRET_KEY = '1x0000000000000000000000000000000AA'
 FORUM = {
     'VOTE_WEIGHT': {'A': 1, 'B': 10},  # kural 2: rol -> karar oylamasındaki ağırlık
     'MIN_ACCOUNT_AGE_DAYS': 7,  # kural 1: oy hakkı için hesap yaşı
+    'QUORUM_PERCENT': 10,  # kural 3: son 30 günde aktif üyelerin %10'u
+    'QUORUM_MIN': 5,  # kural 3: en az 5 kişi
+    'EXPERT_APPROVAL_NUM': 2,  # kural 2: B statüsü başvurusu 2/3 evet gerekir
+    'EXPERT_APPROVAL_DEN': 3,
+    'PROPOSAL_VOTING_DAYS': 2,  # kural 5: açma/düzenleme/kapatma/silme/geri alma önerileri
+    'REQUEST_DISCUSSION_DAYS': 3,  # kural 5: istekler için tartışma süresi
+    'REQUEST_VOTING_DAYS': 3,  # kural 5: istekler için oylama süresi
+    'MAX_OPEN_PROPOSALS': 3,  # kural 8: kişi başı en fazla açık öneri
+    'REJECTED_COOLDOWN_DAYS': 30,  # kural 8: reddedilen öneri bu kadar gün yeniden açılamaz
 }
