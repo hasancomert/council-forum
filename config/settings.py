@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'accounts',
 ]
 
 MIDDLEWARE = [
@@ -54,7 +55,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -102,9 +103,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'tr'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Europe/Istanbul'
 
 USE_I18N = True
 
@@ -124,4 +125,20 @@ MAILERS = {
     'default': {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
+}
+
+
+# Kullanıcılar
+AUTH_USER_MODEL = 'accounts.User'
+LOGIN_REDIRECT_URL = LOGOUT_REDIRECT_URL = 'home'
+
+# Cloudflare Turnstile (CAPTCHA). Bunlar Cloudflare'in her zaman geçen test
+# anahtarları; gerçekleri 9. adımda .env dosyasına taşınacak.
+TURNSTILE_SITE_KEY = '1x00000000000000000000AA'
+TURNSTILE_SECRET_KEY = '1x0000000000000000000000000000000AA'
+
+# Forum kuralları (CLAUDE.md > Kurallar). Kural sayıları yalnızca burada tutulur.
+FORUM = {
+    'VOTE_WEIGHT': {'A': 1, 'B': 10},  # kural 2: rol -> karar oylamasındaki ağırlık
+    'MIN_ACCOUNT_AGE_DAYS': 7,  # kural 1: oy hakkı için hesap yaşı
 }

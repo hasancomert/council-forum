@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Giriş</h1>
+<form method="post">{% csrf_token %}{{ form }}<button>Giriş yap</button></form>
+<p><a href="{% url 'password_reset' %}">Şifremi unuttum</a> · <a href="{% url 'signup' %}">Kayıt ol</a></p>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Kayıt ol</h1>
+<form method="post">{% csrf_token %}
+  {{ form }}
+  <div class="cf-turnstile" data-sitekey="{{ site_key }}"></div>
+  <button>Kayıt ol</button>
+</form>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endblock %}

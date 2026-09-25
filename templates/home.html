@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+{% if user.is_authenticated %}
+  <p>Merhaba {{ user.first_name }}. Rol: {{ user.get_role_display }}, oy ağırlığı: {{ user.vote_weight }},
+     oy hakkı: {{ user.can_vote|yesno:"var,henüz yok" }}.</p>
+{% endif %}
+<p>Konular 4. adımda gelecek.</p>
+{% endblock %}
