@@ -280,3 +280,22 @@ class ReportTests(ModTestCase):
         self.assertFalse(b.is_hidden)
         self.assertEqual(ModAction.objects.count(), 1)  # şikayet kapatmak kayda düşmez
         self.assertContains(self.client.get('/mod/'), 'Açık şikayet yok.')
+
+
+class AdminTests(ModTestCase):
+    def test_founding_and_moderation_fields_read_only(self):
+        root = make_user('kurucu')
+        User.objects.filter(pk=root.pk).update(is_staff=True, is_superuser=True)
+        self.login(root)
+        user_page = f'/admin/accounts/user/{self.bob.pk}/change/'
+        r = self.client.get(user_page)
+        for field in ('is_active', 'banned_until'):  # yalnızca moderasyonla (kayda düşsün)
+            self.assertNotContains(r, f'name="{field}')
+        self.assertContains(r, 'name="role"')  # kuruluşta açık
+        p = TopicCloseProposal.objects.create(proposer=self.bob, topic=self.topic)
+        for url in (f'/admin/topics/topic/{self.topic.pk}/', f'/admin/voting/topiccloseproposal/{p.pk}/'):
+            self.assertNotContains(self.client.get(f'{url}change/'), 'name="is_hidden"')
+        self.assertEqual(self.client.get('/admin/topics/topic/add/').status_code, 200)
+        with override_settings(FORUM={**settings.FORUM, 'FOUNDING': False}):  # kural 9: kuruluş bitti
+            self.assertEqual(self.client.get('/admin/topics/topic/add/').status_code, 403)
+            self.assertNotContains(self.client.get(user_page), 'name="role"')

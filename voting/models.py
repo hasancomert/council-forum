@@ -185,8 +185,8 @@ class BaseProposal(Commentable, Hideable):
         forum = settings.FORUM
         if self.proposer_id:  # admin'de öneren kayıttan hemen önce yazılır
             if not self.proposer.can_vote:
-                raise ValidationError('Engelin sürerken öneri açamazsın.' if self.proposer.is_banned else
-                                      f"Öneri açmak için hesabın en az {forum['MIN_ACCOUNT_AGE_DAYS']} günlük olmalı.")
+                age = f"Öneri açmak için hesabın en az {forum['MIN_ACCOUNT_AGE_DAYS']} günlük olmalı."
+                raise ValidationError('Engelin sürerken öneri açamazsın.' if self.proposer.is_banned else age)
             if open_proposal_count(self.proposer) >= forum['MAX_OPEN_PROPOSALS']:
                 raise ValidationError(f"Aynı anda en fazla {forum['MAX_OPEN_PROPOSALS']} açık önerin olabilir.")
         self.check_target()
