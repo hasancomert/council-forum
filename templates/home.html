@@ -4,7 +4,10 @@
   <p>Merhaba {{ user.first_name }}. Rol: {{ user.get_role_display }}, oy ağırlığı: {{ user.vote_weight }},
      oy hakkı: {{ user.can_vote|yesno:"var,henüz yok" }}.</p>
 {% endif %}
-<p><a href="{% url 'proposals' %}">Açık öneriler</a></p>
+<p>
+  {% if user.is_authenticated %}<a href="{% url 'proposal_new' 'open' %}">Yeni ana konu öner</a> · {% endif %}
+  <a href="{% url 'proposals' %}">Açık öneriler</a> · <a href="{% url 'archive' %}">Arşiv</a>
+</p>
 <h1>Konular</h1>
 <ul>
   {% for topic in topics %}

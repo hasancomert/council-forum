@@ -4,6 +4,19 @@
 <h1>{{ topic.title }}{% if topic.is_locked %} (Kapalı){% endif %}</h1>
 <p>{{ topic.author|default:"silinmiş üye" }} · {{ topic.created_at }}</p>
 {{ topic.description|linebreaks }}
+{% if user.is_authenticated %}
+  <p>
+    {% if topic.is_open %}
+      <a href="{% url 'proposal_new' 'edit' topic.pk %}">Düzenleme öner</a> ·
+      <a href="{% url 'proposal_new' 'close' topic.pk %}">Kapatma öner</a> ·
+      <a href="{% url 'proposal_new' 'delete' topic.pk %}">Silme öner</a> ·
+      <a href="{% url 'proposal_new' 'request' topic.pk %}">İstek aç</a>
+      {% if not topic.parent %} · <a href="{% url 'proposal_new' 'open' topic.pk %}">Alt konu öner</a>{% endif %}
+    {% elif topic.is_closed %}
+      <a href="{% url 'proposal_new' 'undo' topic.pk %}">Yeniden açmayı öner</a>
+    {% endif %}
+  </p>
+{% endif %}
 {% if not topic.parent %}
   <h2>Alt konular</h2>
   <ul>

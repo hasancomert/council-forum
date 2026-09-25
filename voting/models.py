@@ -69,6 +69,8 @@ class BaseProposal(models.Model):
         APPLIED = 'applied', 'Uygulandı'
 
     SLUG = ''  # URL'deki tip adı; PROPOSALS sözlüğü modeli bununla bulur
+    TARGET = 'topic'  # formda URL'den gelen konunun yazılacağı alan (yoksa None)
+    FORM_FIELDS = ()  # öneri formunda kullanıcının doldurduğu alanlar
     WEIGHTED = True  # kural 2: yalnızca B statüsü oylamasında (ExpertProposal) False
     VOTING_DAYS_SETTING = 'PROPOSAL_VOTING_DAYS'  # kural 5: RequestProposal kendi süresini hesaplar
     DUPLICATE_FIELDS = ()  # kural 8: "aynı öneri" bu alanların eşleşmesiyle belirlenir
@@ -170,6 +172,9 @@ class BaseProposal(models.Model):
             raise ValidationError(
                 f"Bu önerinin aynısı oylamada ya da son {forum['REJECTED_COOLDOWN_DAYS']} gün içinde reddedildi.")
 
+    def prefill(self):
+        """Öneri formunun başlangıç değerleri; hedef atandıktan sonra çağrılır."""
+
     def check_target(self):
         """Tipe göre ek denetim. Varsayılan (düzenleme, kapatma, silme, istek): kural 7."""
         if self.topic_id and not self.topic.is_open:
@@ -189,6 +194,8 @@ class BaseProposal(models.Model):
 class TopicOpenProposal(BaseProposal):
     # parent boşsa yeni ana konu önerisi (kural 9: kuruluştan sonra bu da oylamayla).
     SLUG = 'open'
+    TARGET = 'parent'  # isteğe bağlı: boşsa ana konu önerisi
+    FORM_FIELDS = ('title', 'description')
 
     parent = models.ForeignKey(
         Topic, models.PROTECT, null=True, blank=True,
@@ -221,6 +228,7 @@ class TopicOpenProposal(BaseProposal):
 
 class TopicEditProposal(BaseProposal):
     SLUG = 'edit'
+    FORM_FIELDS = ('new_title', 'new_description')
 
     topic = models.ForeignKey(Topic, models.PROTECT, verbose_name='konu')
     new_title = models.CharField('yeni başlık', max_length=200)
@@ -234,6 +242,9 @@ class TopicEditProposal(BaseProposal):
 
     def __str__(self):
         return f'Düzenle: {self.topic}'
+
+    def prefill(self):
+        self.new_title, self.new_description = self.topic.title, self.topic.description
 
     def apply(self):
         if not self.topic.is_open:
@@ -294,6 +305,7 @@ class TopicUndoProposal(BaseProposal):
         RESTORE = 'restore', 'Silmeyi geri al'
 
     SLUG = 'undo'
+    FORM_FIELDS = ('action',)
 
     topic = models.ForeignKey(Topic, models.PROTECT, verbose_name='konu')
     action = models.CharField('işlem', max_length=10, choices=Action)
@@ -306,6 +318,9 @@ class TopicUndoProposal(BaseProposal):
 
     def __str__(self):
         return f'{self.get_action_display()}: {self.topic}'
+
+    def prefill(self):
+        self.action = self.Action.RESTORE if self.topic.is_deleted else self.Action.REOPEN
 
     def check_target(self):
         if not self.topic_id:
@@ -330,6 +345,7 @@ class ExpertProposal(BaseProposal):
         REVOKE = 'revoke', 'B statüsünü geri al'
 
     SLUG = 'expert'
+    TARGET = None  # hedef üye formda seçilir (voting/forms.py)
     WEIGHTED = False  # kural 2: bu oylamada herkesin oyu 1
 
     target_user = models.ForeignKey(
@@ -376,6 +392,7 @@ class RequestProposal(BaseProposal):
     işlemi yok; kabul edilmesi başlı başına sonuçtur (apply() hemen True döner).
     """
     SLUG = 'request'
+    FORM_FIELDS = ('title', 'content')
 
     topic = models.ForeignKey(Topic, models.PROTECT, related_name='requests', verbose_name='ilgili konu')
     title = models.CharField('başlık', max_length=200)
