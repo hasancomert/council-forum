@@ -44,5 +44,6 @@ def comment_section(context, target):
         'ct': ContentType.objects.get_for_model(target).pk,
         'form': CommentForm(auto_id=False),  # sayfada çok form var: tekrarlanan id olmasın
         'can_vote': user.is_authenticated and user.can_vote,  # kural 1: hesap yaşı
+        'can_post': user.is_authenticated and user.can_post,  # engelli yazamaz
         'request': request, 'user': user, 'csrf_token': context.get('csrf_token'),
     }

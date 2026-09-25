@@ -4,6 +4,7 @@ from unittest.mock import patch
 from django.conf import settings
 from django.core import mail
 from django.test import TestCase
+from django.utils import timezone
 
 from .models import User
 
@@ -56,3 +57,11 @@ class VoteTests(TestCase):
         self.assertTrue(user.can_vote)
         user.is_active = False
         self.assertFalse(user.can_vote)
+
+    def test_ban_lifts_by_itself(self):
+        user = User.objects.create_user('c', email='c@example.com')
+        user.date_joined -= timedelta(days=settings.FORUM['MIN_ACCOUNT_AGE_DAYS'])
+        user.banned_until = timezone.now() + timedelta(days=1)
+        self.assertFalse(user.can_post or user.can_vote)
+        user.banned_until = timezone.now() - timedelta(seconds=1)  # süre doldu, alan temizlenmeden kalkar
+        self.assertTrue(user.can_post and user.can_vote)

@@ -321,6 +321,14 @@ class CleanTests(VotingTestCase):
     def test_new_account_cannot_propose(self):
         self.assertInvalid(TopicOpenProposal(proposer=make_user('yeni', days=1), title='X'), 'en az 7 günlük')
 
+    def test_banned_cannot_propose_or_vote(self):
+        p = TopicCloseProposal.objects.create(proposer=self.voters[0], topic=self.topic)
+        User.objects.filter(pk=self.proposer.pk).update(banned_until=timezone.now() + timedelta(days=1))
+        self.proposer.refresh_from_db()
+        self.assertInvalid(TopicOpenProposal(proposer=self.proposer, title='X'), 'Engelin sürerken')
+        with self.assertRaisesMessage(ValueError, 'oy hakkı yok'):
+            Vote.cast(proposal=p, voter=self.proposer, choice=YES)
+
     def test_duplicate_of_voting_proposal(self):
         TopicCloseProposal.objects.create(proposer=self.voters[0], topic=self.topic)
         self.assertInvalid(TopicCloseProposal(proposer=self.proposer, topic=self.topic), 'aynısı')

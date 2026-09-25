@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from config.utils import back
+from config.utils import back, over_limit
 
 from .forms import CommentForm
 from .models import Comment, Commentable, CommentVote
@@ -27,12 +27,15 @@ def add(request, ct, pk):
         raise Http404
     if not isinstance(target, Commentable):  # beyaz liste: ör. bir User'a yorum yazılamaz
         raise Http404
-    if not target.is_open:
+    if not target.is_open or not request.user.can_post:  # engelli okur ama yazamaz
         raise PermissionDenied
     url = target.get_absolute_url()
     form = CommentForm(request.POST)
     if not form.is_valid():
         messages.error(request, 'Yorum boş ya da çok uzun.')
+        return redirect(back(request, url))
+    if over_limit(Comment.objects.filter(author=request.user), 'COMMENT_RATE'):  # silinenler de sayılır
+        messages.error(request, 'Çok sık yorum yazıyorsun, biraz bekle.')
         return redirect(back(request, url))
     p = request.POST.get('parent', '')
     parent = target.comments.filter(pk=p, is_deleted=False).first() if p.isdigit() else None
@@ -47,8 +50,8 @@ def add(request, ct, pk):
 @login_required
 def edit(request, pk):
     comment = get_object_or_404(Comment, pk=pk, author=request.user, is_deleted=False)
-    if not comment.target.is_open:
-        raise PermissionDenied  # hedef kapanınca yorumlar donar
+    if not comment.target.is_open or not request.user.can_post:
+        raise PermissionDenied  # hedef kapanınca yorumlar donar; engelli düzenleyemez (silebilir)
     form = CommentForm(request.POST if request.method == 'POST' else None, instance=comment)
     if form.is_valid():
         if form.has_changed():

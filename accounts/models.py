@@ -23,6 +23,8 @@ class User(AbstractUser):
     last_name = models.CharField('soyad', max_length=150)
     email = models.EmailField('e-posta', unique=True)
     role = models.CharField('rol', max_length=1, choices=Role, default=Role.MEMBER)
+    is_moderator = models.BooleanField('yönetici', default=False)  # moderasyon sitede yapılır, admin'e girmez
+    banned_until = models.DateTimeField('engel bitişi', null=True, blank=True)  # yalnızca moderasyonla değişir
 
     REQUIRED_FIELDS = ['email', 'first_name', 'last_name']  # createsuperuser da sorsun
 
@@ -31,6 +33,17 @@ class User(AbstractUser):
         return settings.FORUM['VOTE_WEIGHT'][self.role]
 
     @property
+    def is_banned(self):
+        # Süre dolunca engel kendiliğinden kalkar: alan temizlenmez, yalnızca tarihe bakılır.
+        return self.banned_until is not None and self.banned_until > timezone.now()
+
+    @property
+    def can_post(self):
+        """Yorum yazabilir mi: aktif ve engelsiz (hesap yaşı gerekmez)."""
+        return self.is_active and not self.is_banned
+
+    @property
     def can_vote(self):
+        """Her türlü oy, öneri ve şikayet: ayrıca kural 1'deki hesap yaşı."""
         min_age = timedelta(days=settings.FORUM['MIN_ACCOUNT_AGE_DAYS'])
-        return self.is_active and timezone.now() - self.date_joined >= min_age
+        return self.can_post and timezone.now() - self.date_joined >= min_age

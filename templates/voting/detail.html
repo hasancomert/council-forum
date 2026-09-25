@@ -36,7 +36,7 @@
           <button name="choice" value="yes">Evet</button> <button name="choice" value="no">Hayır</button>
         </form>
       {% else %}
-        <p>Henüz oy hakkın yok (kural 1: hesap yaşı).</p>
+        <p>{% if user.is_banned %}Engelin sürerken oy veremezsin.{% else %}Henüz oy hakkın yok (kural 1: hesap yaşı).{% endif %}</p>
       {% endif %}
     {% endif %}
   {% endif %}

@@ -162,4 +162,5 @@ FORUM = {
     'PANEL_VOTING': 10,  # ana sayfa panelinde en fazla oylamadaki öneri
     'PANEL_DISCUSSION': 5,  # panelde en fazla tartışmadaki istek
     'PANEL_CACHE_SECONDS': 60,  # panelin herkes için aynı kısmı; 0 = önbellek yok
+    'COMMENT_RATE': (5, 10),  # hız sınırı: 10 dakikada en fazla 5 yorum
 }

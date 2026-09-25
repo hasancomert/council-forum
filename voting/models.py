@@ -171,7 +171,8 @@ class BaseProposal(Commentable):
         forum = settings.FORUM
         if self.proposer_id:  # admin'de öneren kayıttan hemen önce yazılır
             if not self.proposer.can_vote:
-                raise ValidationError(f"Öneri açmak için hesabın en az {forum['MIN_ACCOUNT_AGE_DAYS']} günlük olmalı.")
+                raise ValidationError('Engelin sürerken öneri açamazsın.' if self.proposer.is_banned else
+                                      f"Öneri açmak için hesabın en az {forum['MIN_ACCOUNT_AGE_DAYS']} günlük olmalı.")
             if open_proposal_count(self.proposer) >= forum['MAX_OPEN_PROPOSALS']:
                 raise ValidationError(f"Aynı anda en fazla {forum['MAX_OPEN_PROPOSALS']} açık önerin olabilir.")
         self.check_target()
@@ -456,14 +457,15 @@ def open_proposal_count(user):
 
 def active_member_count():
     """Kural 3: son ACTIVE_DAYS günde karar oyu veren, konu açan ya da yorum yazan üye sayısı.
-    Yorum oyu sayılmaz: tek tıkla verilir, yeter sayıyı şişirmemeli.
+    Yorum oyu sayılmaz: tek tıkla verilir, yeter sayıyı şişirmemeli. Kapatılan hesaplar sayılmaz.
     """
     since = timezone.now() - timedelta(days=settings.FORUM['ACTIVE_DAYS'])
     voter_ids = Vote.objects.filter(voted_at__gte=since).values('voter_id')
     author_ids = Topic.objects.filter(created_at__gte=since).values('author_id')
     commenter_ids = Comment.objects.filter(created_at__gte=since).values('author_id')
     # pk__in alt sorguları aynı üyeyi iki kez döndürmez, distinct() gerekmez.
-    return User.objects.filter(Q(pk__in=voter_ids) | Q(pk__in=author_ids) | Q(pk__in=commenter_ids)).count()
+    return User.objects.filter(Q(pk__in=voter_ids) | Q(pk__in=author_ids) | Q(pk__in=commenter_ids),
+                               is_active=True).count()
 
 
 def required_quorum():

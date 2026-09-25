@@ -10,7 +10,7 @@
       {% else %}puan {{ c.score }}{% endif %}</div>
     <p>{{ c.body|urlize|linebreaksbr }}</p>
     {% if user.is_authenticated %}
-      {% if open %}
+      {% if open and can_post %}
         <details><summary>Yanıtla</summary>
           <form method="post" action="{% url 'comment_add' ct target.pk %}">{% csrf_token %}
             <input type="hidden" name="next" value="{{ request.get_full_path }}">
@@ -19,7 +19,7 @@
         </details>
       {% endif %}
       {% if user == c.author %}
-        {% if open %}<a href="{% url 'comment_edit' c.pk %}?next={{ request.get_full_path|urlencode }}">Düzenle</a>{% endif %}
+        {% if open and can_post %}<a href="{% url 'comment_edit' c.pk %}?next={{ request.get_full_path|urlencode }}">Düzenle</a>{% endif %}
         <details><summary>Sil</summary>
           <form method="post" action="{% url 'comment_delete' c.pk %}">{% csrf_token %}
             <input type="hidden" name="next" value="{{ request.get_full_path }}">

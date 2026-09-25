@@ -40,6 +40,10 @@
   {% if messages %}
     <ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>
   {% endif %}
+  {% if user.is_banned %}
+    <p class="messages"><span class="error">Engelin {{ user.banned_until|date:"j F Y H:i" }} tarihine kadar sürüyor:
+      okuyabilirsin, ama yazamaz, oy veremez ve öneri açamazsın.</span></p>
+  {% endif %}
   <div class="layout">
     <main>{% block content %}{% endblock %}</main>
     <aside>{% block aside %}{% endblock %}</aside>

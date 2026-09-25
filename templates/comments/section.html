@@ -13,11 +13,13 @@
   {% include "_pages.html" with anchor="#yorumlar" %}
   {% if not open %}
     <p>Yorumlar kapalı.</p>
-  {% elif user.is_authenticated %}
+  {% elif can_post %}
     <form method="post" action="{% url 'comment_add' ct target.pk %}">{% csrf_token %}
       <input type="hidden" name="next" value="{{ request.get_full_path }}">
       {{ form.body }}<button>Yorum yaz</button>
     </form>
+  {% elif user.is_authenticated %}
+    <p>Engelin sürerken yorum yazamazsın.</p>
   {% else %}
     <p><a href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">Giriş yap</a>, yorum yaz.</p>
   {% endif %}

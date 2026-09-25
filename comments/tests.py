@@ -1,11 +1,13 @@
 from datetime import timedelta
 from urllib.parse import quote
 
+from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.template import Context, Template
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
 
+from accounts.models import User
 from topics.models import Topic
 from voting.models import RequestProposal, TopicCloseProposal, active_member_count
 from voting.tests import make_user
@@ -214,12 +216,41 @@ class VoteTests(CommentTestCase):
         self.assertEqual(html.count('class="comment reply"'), 15)
 
 
+class BanAndRateTests(CommentTestCase):
+    def test_banned_reads_but_cannot_write(self):
+        c = self.comment(author=self.bob)
+        User.objects.filter(pk=self.bob.pk).update(banned_until=timezone.now() + timedelta(days=1))
+        self.bob.refresh_from_db()
+        self.client.force_login(self.bob)
+        self.assertContains(self.client.get(self.topic.get_absolute_url()), 'Engelin sürerken yorum yazamazsın.')
+        self.assertEqual(self.client.post(add_url(self.topic), {'body': 'x'}).status_code, 403)
+        self.assertEqual(self.client.post(f'/comments/{c.pk}/edit/', {'body': 'x'}).status_code, 403)
+        with self.assertRaisesMessage(ValueError, 'oy verilemez'):
+            CommentVote.cast(self.comment(), self.bob, 1)
+        self.client.post(f'/comments/{c.pk}/delete/')  # kendi yorumunu silebilir
+        c.refresh_from_db()
+        self.assertTrue(c.is_deleted)
+
+    @override_settings(FORUM={**settings.FORUM, 'COMMENT_RATE': (2, 10)})
+    def test_comment_rate_limit(self):
+        self.client.force_login(self.bob)
+        for body in ('y1', 'y2', 'y3'):
+            r = self.client.post(add_url(self.topic), {'body': body}, follow=True)
+        self.assertContains(r, 'Çok sık yorum yazıyorsun')
+        self.assertEqual(Comment.objects.count(), 2)
+        Comment.objects.update(created_at=timezone.now() - timedelta(minutes=11))  # pencere geçti
+        self.client.post(add_url(self.topic), {'body': 'y4'})
+        self.assertEqual(Comment.objects.count(), 3)
+
+
 class ActiveMemberTests(CommentTestCase):
     def test_commenter_counts_comment_voter_does_not(self):
         self.assertEqual(active_member_count(), 1)  # konuyu açan alice
         c = self.comment(author=self.bob)
         CommentVote.cast(c, make_user('carol'), 1)
         self.assertEqual(active_member_count(), 2)  # bob sayıldı, carol sayılmadı
+        User.objects.filter(pk=self.bob.pk).update(is_active=False)
+        self.assertEqual(active_member_count(), 1)  # kapatılan hesap sayılmaz
 
 
 class AdminTests(CommentTestCase):
