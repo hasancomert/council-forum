@@ -1,3 +1,6 @@
+from datetime import timedelta
+from urllib.parse import quote
+
 from django.contrib.contenttypes.models import ContentType
 from django.template import Context, Template
 from django.test import RequestFactory, TestCase
@@ -115,6 +118,48 @@ class SectionTests(CommentTestCase):
         self.assertContains(r, '&lt;b&gt;kalın&lt;/b&gt;')
         self.assertContains(r, 'rel="nofollow"')
 
+    def test_pages_keep_replies_with_their_comment(self):
+        tops = [self.comment(f'ana {i}') for i in range(25)]
+        self.comment('son yanıt', author=self.bob, parent=tops[-1])
+        url = self.topic.get_absolute_url()
+        r = self.client.get(f'{url}?page=2')  # eşit puan: eskiden yeniye, son 5 ana yorum
+        self.assertContains(r, 'class="comment"', count=5)
+        self.assertContains(r, 'son yanıt')
+        self.assertContains(r, 'Yorumlar (26)')  # sayım tüm sayfaların
+        self.assertContains(r, '?page=1#yorumlar')
+        self.assertNotContains(self.client.get(url), 'son yanıt')
+
+
+class BackTests(CommentTestCase):
+    """İşlemden sonra formun geldiği sayfaya (next) dönüş."""
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.bob)
+        self.url = self.topic.get_absolute_url()
+
+    def test_vote_returns_to_next_and_rejects_other_sites(self):
+        c = self.comment()
+        r = self.client.post(f'/comments/{c.pk}/vote/', {'value': '1', 'next': f'{self.url}?page=2'})
+        self.assertRedirects(r, f'{self.url}?page=2#c{c.pk}')
+        for bad in ('https://kotu.site/', '//kotu.site', 'abc'):
+            with self.subTest(bad):
+                r = self.client.post(f'/comments/{c.pk}/vote/', {'value': '1', 'next': bad})
+                self.assertRedirects(r, f'{self.url}#c{c.pk}')
+
+    def test_new_comment_to_newest_reply_to_next(self):
+        r = self.client.post(add_url(self.topic), {'body': 'Yeni', 'next': f'{self.url}?page=2'})
+        c = Comment.objects.get()
+        self.assertRedirects(r, f'{self.url}?sort=new#c{c.pk}')
+        r = self.client.post(add_url(self.topic), {'body': 'Yanıt', 'parent': c.pk, 'next': f'{self.url}?page=2'})
+        self.assertRedirects(r, f'{self.url}?page=2#c{Comment.objects.get(body="Yanıt").pk}')
+
+    def test_edit_returns_to_next(self):
+        c = self.comment(author=self.bob)
+        edit = f'/comments/{c.pk}/edit/?next={quote(f"{self.url}?page=2")}'
+        self.assertContains(self.client.get(edit), f'href="{self.url}?page=2#c{c.pk}">Vazgeç')
+        self.assertRedirects(self.client.post(edit, {'body': 'Yeni'}), f'{self.url}?page=2#c{c.pk}')
+
 
 class VoteTests(CommentTestCase):
     def test_up_down_and_undo(self):
@@ -124,6 +169,13 @@ class VoteTests(CommentTestCase):
             c.refresh_from_db()
             self.assertEqual(c.score, score)
         self.assertFalse(CommentVote.objects.exists())  # ikinci ▼ oyu geri aldı
+
+    def test_changing_direction_updates_voted_at(self):  # "en popüler": fikir değiştirmek de etkinlik
+        c = self.comment()
+        CommentVote.cast(c, self.bob, 1)
+        CommentVote.objects.update(voted_at=timezone.now() - timedelta(days=1))
+        CommentVote.cast(c, self.bob, -1)
+        self.assertGreater(CommentVote.objects.get().voted_at, timezone.now() - timedelta(minutes=1))
 
     def test_forbidden_votes(self):
         c = self.comment()

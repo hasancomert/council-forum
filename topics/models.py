@@ -12,7 +12,8 @@ from comments.models import Comment, Commentable, CommentVote, UpDownVote
 
 def count_of(model, **filters):
     """Satır başına COUNT alt sorgusu: JOIN çoğaltması ve konu başına ayrı sorgu yok. Count değil
-    düz Func: GROUP BY eklenmez, eşleşme yoksa da tek satır döner (NULL değil 0)."""
+    düz Func: GROUP BY eklenmez, eşleşme yoksa da tek satır döner (NULL değil 0).
+    """
     return Subquery(model.objects.filter(**filters).order_by().values(n=Func('pk', function='COUNT')),
                     output_field=IntegerField())
 
@@ -28,7 +29,8 @@ class TopicQuerySet(models.QuerySet):
 
     def ranked(self, sort):
         """Yorum sayısını (n_comments) ekler ve SORTS'a göre sıralar. heat ("en popüler") yalnızca
-        o sıralamada hesaplanır: son POPULAR_DAYS günün yorumları ve oyları (yönüne bakılmaz)."""
+        o sıralamada hesaplanır: son POPULAR_DAYS günün yorumları ve oyları (yönüne bakılmaz).
+        """
         ct = ContentType.objects.get_for_model(self.model)
         on_topic = {'content_type': ct, 'object_id': OuterRef('pk'), 'is_deleted': False}
         qs = self.annotate(n_comments=count_of(Comment, **on_topic))

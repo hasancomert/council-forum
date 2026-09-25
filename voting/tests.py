@@ -1,6 +1,7 @@
 from datetime import timedelta
 from io import StringIO
 
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.test import TestCase
@@ -209,6 +210,52 @@ class PageTests(VotingTestCase):
         p = TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic)
         self.assertContains(self.client.get('/proposals/'), str(p))
         self.assertEqual(self.client.get(f'/proposals/yok/{p.pk}/').status_code, 404)
+
+
+class PanelTests(VotingTestCase):
+    def setUp(self):
+        super().setUp()
+        cache.clear()  # panel önbelleği testler arasında taşınmasın
+
+    def panel(self, url='/'):
+        html = self.client.get(url).content.decode()
+        return html[html.index('<aside>'):]
+
+    def test_order_phases_and_expiry(self):
+        now = timezone.now()
+        late = TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic)  # 2 gün
+        soon = TopicOpenProposal.objects.create(proposer=self.proposer, title='Yakın', voting_ends_at=now + timedelta(hours=1))
+        TopicOpenProposal.objects.create(proposer=self.proposer, title='Bitti', voting_ends_at=now - timedelta(minutes=1))
+        r = RequestProposal.objects.create(proposer=self.proposer, topic=self.topic, title='İstek', content='.')
+        Vote.cast(proposal=late, voter=self.voters[0], choice=YES)
+        panel = self.panel()
+        self.assertLess(panel.index(str(soon)), panel.index(str(late)))  # bitişi yakın önce
+        self.assertLess(panel.index(str(late)), panel.index('Tartışmada'))
+        self.assertLess(panel.index('Tartışmada'), panel.index('İstek'))  # tartışmadaki istek yalnızca orada
+        self.assertIn('1 katılım', panel)  # kural 6: sonuç değil, yalnızca katılım
+        self.assertNotIn('Bitti', panel)
+        RequestProposal.objects.filter(pk=r.pk).update(discussion_ends_at=now)  # oylama evresine geçti
+        cache.clear()
+        panel = self.panel(self.topic.get_absolute_url())  # konu sayfasında da var
+        self.assertNotIn('Tartışmada', panel)
+        self.assertIn('İstek', panel)
+
+    def test_overflow_links_to_all(self):
+        for i in range(12):
+            TopicOpenProposal.objects.create(proposer=self.proposer, title=f'Öneri {i}')
+        panel = self.panel()
+        self.assertEqual(panel.count('<li>'), 10)
+        self.assertIn('tümü (12)', panel)
+
+    def test_unvoted_marker(self):
+        p = TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic)
+        self.assertNotIn('●', self.panel())  # giriş yok
+        self.client.force_login(make_user('yeni', days=1))
+        self.assertNotIn('●', self.panel())  # oy hakkı yok
+        self.client.force_login(self.voters[0])
+        self.assertIn('●', self.panel())
+        Vote.cast(proposal=p, voter=self.voters[0], choice=YES)
+        self.assertNotIn('●', self.panel())  # ortak kısım önbellekte, işaret yine de güncel
 
 
 class FormTests(VotingTestCase):

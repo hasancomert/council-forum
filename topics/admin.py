@@ -5,11 +5,12 @@ from .models import Topic
 
 @admin.register(Topic)
 class TopicAdmin(admin.ModelAdmin):
-    list_display = ('title', 'parent', 'author', 'created_at', 'is_closed', 'is_deleted')
+    # Puan herkese açık; kimin ne verdiği gizli kalsın diye TopicVote admin'e kaydedilmez.
+    list_display = ('title', 'parent', 'author', 'created_at', 'score', 'is_closed', 'is_deleted')
     list_filter = ('is_closed', 'is_deleted')
     list_select_related = ('parent', 'author')
     search_fields = ('title',)
-    readonly_fields = ('author', 'created_at')
+    readonly_fields = ('author', 'created_at', 'score')
 
     def get_readonly_fields(self, request, obj=None):
         return self.readonly_fields + (('parent',) if obj else ())  # taşıma yok
