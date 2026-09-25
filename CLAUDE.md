@@ -53,6 +53,10 @@ Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), ileride PW
 - CAPTCHA: Cloudflare Turnstile, ek paket yok (`urllib`). Şimdilik test anahtarları var; gerçekleri 9. adımda `.env`'e. Cloudflare'e giden veri KVKK metninde belirtilecek.
 - E-posta ayarı Django 6.1'in `MAILERS` ayarıyla yapılıyor, şimdilik konsola yazıyor. `EMAIL_BACKEND` gibi eski `EMAIL_*` ayarları artık kullanılmıyor, SMTP 9. adımda `MAILERS`'a eklenecek.
 - Şifre sıfırlama/değiştirme sayfaları şimdilik admin şablonlarını kullanıyor. Arayüz yapılırken kendi şablonlarımız yazılacak.
+- Konular: `topics` uygulaması, tek model `Topic`. Alt konu = `parent`'ı dolu konu (ters adı `children`). İki seviye var: `parent`'taki `limit_choices_to={"parent": None}` hem admin listesini süzer hem `full_clean()`'de denetler. Üst konu sonradan değişmez, admin'de yalnızca eklerken seçilir.
+- `is_closed` ve `is_deleted` ayrı alanlar. Ana konudan miras hesaplanır, alt konulara yazılmaz. Görünürlüğün tek yeri `Topic.objects.visible()` (8. adımdaki moderasyon gizlemesi de buraya). Kapalılık için `is_locked` (5. ve 6. adımda öneri ve yorum buna bakacak). `objects` hepsini getirir.
+- Gerçek silme yok (kural 7): `parent` için `PROTECT`, admin'de silme kapalı. `author` `SET_NULL` ve formlarda düzenlenemez (`editable=False`); admin'de ekleyen kullanıcı olur.
+- Sitede konu açma/düzenleme/kapatma/silme düğmesi yok, 5. adımda öneri ve oylamayla gelecek. Ana sayfa (7. adıma kadar geçici) görünür ana konuları listeler. `topics/<pk>/` gizli konuda 404 döner.
 - 5. adım: B statüsü yalnızca oylamayla değişmeli. Admin'deki `role` alanı o zaman salt okunur yapılacak (şimdilik test için açık).
 - 5. adım: Admin'de konular salt okunur olacak; kuruluş bitince admin'den konu eklemek de kapanacak (kural 9).
 - 5. adım: Silinen konunun sayfası 404 döndüğü için geri alma önerisinin nereden açılacağı belirlenecek.
@@ -60,29 +64,11 @@ Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), ileride PW
 - 8. adım: Hesap kapatma `is_active=False` ile yapılırsa, hiç doğrulanmamış bir hesabın doğrulama bağlantısı onu yeniden açabilir. Kapatma için ayrı bir işaret düşünülecek.
 - `SECRET_KEY` şu an geliştirme anahtarı (`django-insecure`). Yayından önce (9. adım) yenisi üretilip `.env` dosyasına taşınacak.
 
-## 4. adım tasarımı: konular ve alt konular
-claude.ai'de konuşuldu, Claude Code uygular. Adım bitince kalıcı kararlar "Kararlar ve notlar"a taşınır, bu bölüm silinir.
-
-- Yeni uygulama `topics`, tek model `Topic`. Alt konu, `parent` alanı dolu olan konudur (`ForeignKey("self")`, ters adı `children`). İki seviye var: üst konu yalnızca ana konu olabilir, bunu `clean()` denetler. Üst konu sonradan değişmez, taşıma yok.
-- Alanlar: `parent`, `title`, `description` (boş olabilir), `author`, `created_at`, `is_closed`, `is_deleted`; etiketler Türkçe. `author` için `SET_NULL`: üye silinse de konu kalır.
-- Kapalı ve silinmiş iki ayrı alan. Kapalı bir konu silinip geri getirilirse kapalı olarak döner.
-- Miras: ana konu kapalıysa alt konuları da kapalı, silinmişse alt konuları da gizli sayılır. Alt konuların alanlarına yazılmaz, hesaplanır; ana konu geri gelince her alt konu kendi durumuna döner.
-  - Görünürlük tek yerde: `Topic.objects.visible()` (özel QuerySet) silinenleri ve üst konusu silinenleri eler. `objects` yine hepsini getirir, admin silinenleri de görür. 8. adımdaki moderasyon gizlemesi de buraya eklenecek.
-  - Kapalılık: `is_locked` özelliği (kendisi ya da üst konusu kapalı). 5. ve 6. adımda yeni öneri ve yorum buna bakacak.
-- Gerçek silme yok (kural 7): `parent` için `on_delete=PROTECT`, admin'de silme izni kapalı.
-- Sitede konu açma, düzenleme, kapatma ya da silme düğmesi yok; bunlar 5. adımda öneri ve oylamayla gelecek.
-- Kurucu (kural 9) ilk ana konuları admin'den açar; `author` otomatik olarak giriş yapan kullanıcı olur. Test için admin'de ekleme ve düzenleme şimdilik açık; `parent` yalnızca eklerken seçilir.
-- Sayfalar:
-  - Ana sayfa (7. adıma kadar geçici): görünür ana konular, yeniden eskiye.
-  - `topics/<pk>/`: başlık, açıklama, açan, tarih ve "Kapalı" etiketi. Alt konuysa üst konusuna bağlantı, ana konuysa görünür alt konuları. Gizli konu 404 döner.
-- Testler: iki seviye sınırı, `visible()` (silinen ve üst konusu silinen gizli), kapalılık mirası, gizli konuya 404.
-- `FORUM` ayarına yeni sayı gerekmiyor.
-
 ## Yol haritası
 1. Kurallar ✓
 2. Kurulum: Python, VS Code, Git/GitHub, boş Django projesi ✓
 3. Kullanıcılar: roller, oy ağırlığı, kayıt/giriş ✓
-4. Konular ve alt konular
+4. Konular ve alt konular ✓
 5. Oylama motoru: öneri → tartışma → oylama → sonuç, zamanlayıcı
 6. Yorumlar ve upvote/downvote
 7. Ana sayfa: panel, sekmeler, sıralama
@@ -104,4 +90,4 @@ claude.ai'de konuşuldu, Claude Code uygular. Adım bitince kalıcı kararlar "K
 - Commit ve push'u kullanıcıya sormadan yapma.
 
 ## Durum
-1., 2. ve 3. adım tamamlandı. 4. adımın tasarımı hazır (yukarıda); sıradaki iş onu Claude Code'da uygulamak.
+1.–4. adım tamamlandı. Sıradaki: 5. adım (oylama motoru); tasarımı claude.ai'de konuşulacak.
