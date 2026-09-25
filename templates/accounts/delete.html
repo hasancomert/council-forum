@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Hesabı sil</h1>
+<p>Adın, soyadın, e-postan, takma adın ve şifren silinir; içeriklerinde yazar olarak "silinmiş üye" görünür.
+  Bu işlem geri alınamaz.</p>
+<ul>
+  <li>Açtığın konu ve öneriler topluluk kararlarının parçası olduğu için anonim olarak kalır.</li>
+  <li>Bitmiş oylamalardaki oyların sayılmaya devam eder; süren oylamalardaki oyların ve açık önerilerin geri çekilir.</li>
+  <li>Aşağıdaki kutuyu işaretlersen yorumlarının metni de silinir, yerinde "Bu yorum silindi" yazar.</li>
+</ul>
+<form method="post">{% csrf_token %}
+  {{ form }}
+  <p class="links"><button class="primary">Hesabımı sil</button> <a href="{% url 'account' %}">Vazgeç</a></p>
+</form>
+{% endblock %}

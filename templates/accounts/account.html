@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Hesabım</h1>
+<ul class="list">
+  <li>Takma ad: <strong>{{ user.username }}</strong> <small>(herkese açık)</small></li>
+  <li>Ad soyad: {{ user.first_name }} {{ user.last_name }} <small>(kimseye gösterilmez)</small></li>
+  <li>E-posta: {{ user.email }} <small>(kimseye gösterilmez)</small></li>
+  <li>Rol: {{ user.get_role_display }} · karar oylamalarında oy ağırlığın {{ user.vote_weight }}</li>
+  <li>Kayıt: {{ user.date_joined|date:"j F Y" }}{% if user.terms_accepted_at %} · şartları kabul: {{ user.terms_accepted_at|date:"j F Y H:i" }}{% endif %}</li>
+</ul>
+<p class="links">
+  <a href="{% url 'password_change' %}">Şifreni değiştir</a>
+  <a href="{% url 'mod_log' %}?user={{ user.username|urlencode }}">Hakkındaki moderasyon kayıtları</a>
+  {% if not user.is_staff %}<a href="{% url 'account_delete' %}">Hesabı sil</a>{% endif %}
+</p>
+<p><small>Kişisel verilerin ve hakların: <a href="{% url 'privacy' %}">KVKK aydınlatma metni</a>.</small></p>
+{% endblock %}

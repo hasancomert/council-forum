@@ -8,7 +8,7 @@ from .models import User
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     fieldsets = BaseUserAdmin.fieldsets + (
-        ('Forum', {'fields': ('role', 'is_moderator', 'banned_until', 'terms_accepted_at')}),
+        ('Forum', {'fields': ('role', 'is_moderator', 'banned_until', 'terms_accepted_at', 'deleted_at')}),
     )
     # Zorunlu alanlar "kullanıcı ekle" sayfasında da sorulmalı
     add_fieldsets = (
@@ -21,7 +21,7 @@ class UserAdmin(BaseUserAdmin):
     list_display = ('username', 'email', 'first_name', 'last_name', 'role', 'is_moderator', 'is_active', 'is_staff')
     list_filter = BaseUserAdmin.list_filter + ('role', 'is_moderator')
     # Engel ve hesap kapatma yalnızca moderasyon sayfalarından (kayda düşsün diye).
-    readonly_fields = ('is_active', 'banned_until', 'terms_accepted_at')
+    readonly_fields = ('is_active', 'banned_until', 'terms_accepted_at', 'deleted_at')
 
     def get_readonly_fields(self, request, obj=None):
         # Kuruluştan sonra B statüsü yalnızca oylamayla değişir (kural 2, ExpertProposal).

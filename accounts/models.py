@@ -26,8 +26,26 @@ class User(AbstractUser):
     is_moderator = models.BooleanField('yönetici', default=False)  # moderasyon sitede yapılır, admin'e girmez
     banned_until = models.DateTimeField('engel bitişi', null=True, blank=True)  # yalnızca moderasyonla değişir
     terms_accepted_at = models.DateTimeField('şartları kabul', null=True, editable=False)  # kayıtta; kurucuda boş
+    deleted_at = models.DateTimeField('silinme', null=True, editable=False)  # hesap silindi: anonim
 
     REQUIRED_FIELDS = ['email', 'first_name', 'last_name']  # createsuperuser da sorsun
+
+    def __str__(self):
+        # Silinen hesabın takma adı hiçbir yerde görünmez: yorum, öneri ve moderasyon kaydı bunu yazar.
+        return 'silinmiş üye' if self.deleted_at else self.username
+
+    def anonymize(self):
+        """Hesap silme (KVKK): kişisel bilgiler silinir, satır kalır. Gerçek silme karar oylarını CASCADE'le
+        silip bitmiş oylamaların sonucunu değiştirir, moderasyon kaydı (PROTECT) da buna izin vermez.
+        Takma ad ve e-posta benzersiz olmalı: kişiye ait olmayan, pk'den türeyen değerler yazılır.
+        """
+        self.username, self.email = f'silinmis-{self.pk}', f'{self.pk}@silinmis.invalid'
+        self.first_name = self.last_name = ''
+        self.set_unusable_password()  # öbür cihazlardaki oturumlar da düşer (oturum şifre özetine bağlı)
+        self.is_active = self.is_moderator = False
+        self.role, self.banned_until, self.terms_accepted_at = self.Role.MEMBER, None, None
+        self.deleted_at = timezone.now()
+        self.save()
 
     @property
     def vote_weight(self):

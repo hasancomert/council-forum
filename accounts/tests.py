@@ -6,6 +6,11 @@ from django.core import mail
 from django.test import TestCase
 from django.utils import timezone
 
+from comments.models import Comment
+from topics.models import Topic
+from voting.models import TopicCloseProposal, TopicEditProposal, Vote
+from voting.tests import make_user
+
 from .models import User
 
 FORM = {'username': 'ali', 'first_name': 'Ali', 'last_name': 'Veli', 'email': 'Ali@Example.com',
@@ -84,3 +89,56 @@ class LegalPageTests(TestCase):
         terms = self.client.get('/kullanim-sartlari/')  # kural sayıları metne ayardan gelir
         self.assertContains(terms, f"oy ağırlığı {settings.FORUM['VOTE_WEIGHT']['B']}")
         self.assertContains(terms, f"%{settings.FORUM['QUORUM_PERCENT']}")
+
+
+class DeleteAccountTests(TestCase):
+    def setUp(self):
+        self.user = make_user('silinecek')
+        self.user.set_password('dogru-sifre-42')
+        self.user.save()
+        self.other = make_user('diger')
+        self.topic = Topic.objects.create(title='Konu', author=self.user)
+        self.comment = Comment.objects.create(target=self.topic, author=self.user, body='Benim yorumum')
+        self.running = TopicCloseProposal.objects.create(proposer=self.user, topic=self.topic)
+        self.finished = TopicEditProposal.objects.create(proposer=self.other, topic=self.topic, new_title='Yeni')
+        for p in (self.running, self.finished):
+            Vote.cast(proposal=p, voter=self.user, choice='yes')
+        TopicEditProposal.objects.filter(pk=self.finished.pk).update(voting_ends_at=timezone.now())  # bitti
+        self.client.force_login(self.user)
+
+    def delete(self, **data):
+        return self.client.post('/accounts/delete/', {'password': 'dogru-sifre-42'} | data)
+
+    def test_wrong_password_changes_nothing(self):
+        self.assertContains(self.delete(password='yanlis'), 'Şifre yanlış.')
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.deleted_at)
+
+    def test_anonymizes_and_keeps_finished_votes(self):
+        self.assertRedirects(self.delete(), '/')
+        u = User.objects.get(pk=self.user.pk)
+        self.assertEqual((str(u), u.first_name, u.last_name, u.is_active), ('silinmiş üye', '', '', False))
+        self.assertNotIn('silinecek', u.username + u.email)
+        self.assertFalse(u.has_usable_password())
+        self.assertEqual(self.client.get('/accounts/').status_code, 302)  # oturum kapandı
+        self.assertEqual(list(Vote.objects.filter(voter=u).values_list('object_id', flat=True)), [self.finished.pk])
+        self.running.refresh_from_db()
+        self.assertEqual(self.running.status, 'cancelled')  # açık öneri geri çekildi
+        self.comment.refresh_from_db()
+        self.assertEqual((self.comment.body, self.comment.is_deleted), ('Benim yorumum', False))  # kutu işaretsiz
+        self.assertContains(self.client.get(self.topic.get_absolute_url()), 'silinmiş üye')
+
+    def test_optionally_deletes_comment_texts(self):
+        self.delete(delete_comments='on')
+        self.comment.refresh_from_db()
+        self.assertEqual((self.comment.body, self.comment.is_deleted), ('', True))
+
+    def test_staff_cannot_delete_and_anonymized_is_not_purged(self):
+        User.objects.filter(pk=self.other.pk).update(is_staff=True)
+        self.client.force_login(self.other)
+        self.assertEqual(self.delete().status_code, 403)
+        self.user.anonymize()
+        User.objects.filter(pk=self.user.pk).update(last_login=None, date_joined=timezone.now() - timedelta(days=30))
+        with patch('accounts.forms.turnstile_ok', return_value=True):
+            self.client.post('/accounts/signup/', FORM)  # doğrulanmamış hesap temizliği anonim hesaba dokunmaz
+        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())

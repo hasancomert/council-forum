@@ -20,7 +20,7 @@
       <a href="{% url 'mod_log' %}">Moderasyon</a>
       {% if user.is_moderator %}<a href="{% url 'mod_queue' %}">Şikayetler</a>{% endif %}
       {% if user.is_authenticated %}
-        <span class="me">{{ user.username }}</span>
+        <a class="me" href="{% url 'account' %}" title="Hesabım">{{ user.username }}</a>
         <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button class="link">Çıkış</button></form>
       {% else %}
         <a href="{% url 'login' %}">Giriş</a>
