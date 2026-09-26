@@ -414,6 +414,11 @@ progress::-webkit-progress-value { border-radius: 99px; background: var(--accent
 progress::-moz-progress-bar { border-radius: 99px; background: var(--accent); }
 .turnout.met progress::-webkit-progress-value { background: var(--ok); }
 .turnout.met progress::-moz-progress-bar { background: var(--ok); }
+/* Bitmiş oylamanın sonucu: yeşil evet, kırmızı hayır; aradaki sınır düz */
+progress.result { display: block; max-width: 24rem; height: .6rem; margin: var(--s3) 0 var(--s1); background: var(--danger); }
+progress.result::-webkit-progress-bar { background: var(--danger); }
+progress.result::-webkit-progress-value { border-radius: 0; background: var(--ok); }
+progress.result::-moz-progress-bar { border-radius: 0; background: var(--ok); }
 
 /* Listeler: öneriler, moderasyon kaydı, şikayetler, arşiv */
 .list { margin: 0 0 var(--s3); padding: 0; list-style: none; }

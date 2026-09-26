@@ -33,6 +33,8 @@
   <p>Sonuç: <strong>İptal edildi</strong>. Oylama sonuçlanmadığı için ara sonuç açıklanmaz.</p>
 {% elif tally %}
   <p>Sonuç: <strong>{{ proposal.get_status_display }}</strong>{% if proposal.applied_at %} · {{ proposal.applied_at|date:"j F Y H:i" }}{% endif %}</p>
+  {# kural 6: oran yalnızca bitince; çubuğun yeşili evet, kırmızısı hayır (sayılar yazıda da) #}
+  {% if tally.count %}<progress class="result" max="{{ tally.yes|add:tally.no }}" value="{{ tally.yes }}" aria-label="Evet oranı">{{ tally.yes }}/{{ tally.yes|add:tally.no }}</progress>{% endif %}
   <p>Evet {{ tally.yes }} · Hayır {{ tally.no }}{% if proposal.WEIGHTED %} (ağırlıklı){% endif %} · katılım {{ tally.count }}, yeter sayı {{ proposal.quorum }}</p>
   {% if proposal.status == "accepted" %}<p class="notice">Hedefin şu anki durumu uygun olmadığı için henüz uygulanamadı.</p>{% endif %}
 {% else %}

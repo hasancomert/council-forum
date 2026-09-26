@@ -175,10 +175,12 @@ class PageTests(VotingTestCase):
         r = self.client.get(p.get_absolute_url())
         self.assertContains(r, '5/5 katılım · yeter sayı tamam')  # kural 3: yeter sayı en az 5
         self.assertNotContains(r, 'Evet 3')
+        self.assertNotContains(r, 'class="result"')  # kural 6: oran oylama bitince
         TopicCloseProposal.objects.filter(pk=p.pk).update(voting_ends_at=timezone.now())
         r = self.client.get(p.get_absolute_url())  # sayfa ziyareti sonuçlandırır
         self.assertContains(r, 'Uygulandı')
         self.assertContains(r, 'Evet 3 · Hayır 2 (ağırlıklı) · katılım 5, yeter sayı 5')
+        self.assertContains(r, 'class="result" max="5" value="3"')  # 3/5 yeşil, 2/5 kırmızı
 
     def test_vote_view(self):
         p = TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic)
