@@ -12,7 +12,8 @@ class Command(BaseCommand):
         count = 0
         for model in PROPOSAL_MODELS:
             queryset = model.objects.filter(status=BaseProposal.Status.VOTING, voting_ends_at__lte=now)
-            queryset = queryset | model.objects.filter(status=BaseProposal.Status.ACCEPTED, applied_at__isnull=True)
+            # kabul edilip uygulanmamış: yarıda kalmış ya da bu sürümden önce bekletilmiş öneri
+            queryset = queryset | model.objects.filter(status=BaseProposal.Status.ACCEPTED)
             for proposal in queryset:
                 proposal.finalize()
                 count += 1

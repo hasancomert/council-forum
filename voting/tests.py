@@ -111,26 +111,34 @@ class FinalizeTests(VotingTestCase):
         Vote.cast(proposal=r, voter=self.voters[0], choice=YES)
         self.assertEqual(r.participant_count, 1)
 
-    def test_accepted_waits_until_target_allows(self):
+    def test_accepted_but_unapplicable_fails_without_waiting(self):
         p = TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic)
         self.vote(p, yes=self.voters)
         Topic.objects.filter(pk=self.topic.pk).update(is_deleted=True)
         self.expire(p)
-        self.assertEqual((p.status, p.applied_at), (S.ACCEPTED, None))
+        self.assertEqual((p.status, p.applied_at), (S.FAILED, None))
         Topic.objects.filter(pk=self.topic.pk).update(is_deleted=False)
         p = TopicCloseProposal.objects.get(pk=p.pk)
-        p.finalize()
+        p.finalize()  # sonuçlandı: hedef sonradan uygun olsa da yeniden denenmez
         self.topic.refresh_from_db()
-        self.assertEqual(p.status, S.APPLIED)
-        self.assertTrue(self.topic.is_closed)
+        self.assertEqual(p.status, S.FAILED)
+        self.assertFalse(self.topic.is_closed)
+        # kural 8: açık öneri sayılmaz, ret yasağına girmez; aynısı yeniden açılabilir
+        self.assertEqual(open_proposal_count(self.proposer), 0)
+        self.assertFalse(TopicCloseProposal(proposer=self.proposer, topic=self.topic).is_duplicate())
 
     def test_command_finalizes_expired(self):
         p = TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic)
         self.vote(p, yes=self.voters)
         TopicCloseProposal.objects.filter(pk=p.pk).update(voting_ends_at=timezone.now())
+        # bu sürümden önce 'kabul' durumunda bekletilmiş öneri: komut sonuçlandırır
+        parent = Topic.objects.create(title='Silinen', is_deleted=True)
+        old = TopicOpenProposal.objects.create(proposer=self.proposer, parent=parent, title='Eski')
+        TopicOpenProposal.objects.filter(pk=old.pk).update(status=S.ACCEPTED)
         call_command('finalize_proposals', stdout=StringIO())
         p.refresh_from_db()
-        self.assertEqual(p.status, S.APPLIED)
+        old.refresh_from_db()
+        self.assertEqual((p.status, old.status), (S.APPLIED, S.FAILED))
 
     def test_undo_reopen(self):
         Topic.objects.filter(pk=self.topic.pk).update(is_closed=True)
@@ -141,21 +149,22 @@ class FinalizeTests(VotingTestCase):
         self.assertEqual(p.status, S.APPLIED)
         self.assertFalse(self.topic.is_closed)
 
-    def test_open_under_closed_parent_waits(self):
+    def test_open_under_closed_parent_fails(self):
         p = TopicOpenProposal.objects.create(proposer=self.proposer, parent=self.topic, title='Alt')
         self.vote(p, yes=self.voters)
         Topic.objects.filter(pk=self.topic.pk).update(is_closed=True)
         self.expire(p)
-        self.assertEqual(p.status, S.ACCEPTED)
+        self.assertEqual(p.status, S.FAILED)
+        self.assertContains(self.client.get(p.get_absolute_url()), 'uygulanamadı. Aynı öneri yeniden açılabilir.')
         self.assertFalse(Topic.objects.filter(title='Alt').exists())
 
-    def test_edit_waits_if_topic_closed_during_voting(self):
+    def test_edit_fails_if_topic_closed_during_voting(self):
         p = TopicEditProposal.objects.create(proposer=self.proposer, topic=self.topic, new_title='Yeni')
         self.vote(p, yes=self.voters)
         Topic.objects.filter(pk=self.topic.pk).update(is_closed=True)
         self.expire(p)
         self.topic.refresh_from_db()
-        self.assertEqual((p.status, self.topic.title), (S.ACCEPTED, 'Konu'))
+        self.assertEqual((p.status, self.topic.title), (S.FAILED, 'Konu'))
 
     def test_stale_copy_does_not_apply_twice(self):
         p = TopicOpenProposal.objects.create(proposer=self.proposer, title='Tek')

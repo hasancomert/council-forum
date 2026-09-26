@@ -69,8 +69,10 @@ class BaseProposal(Commentable, Hideable):
         ACCEPTED = 'accepted', 'Kabul edildi'
         REJECTED = 'rejected', 'Reddedildi'
         APPLIED = 'applied', 'Uygulandı'
-        # Moderasyon: gizlenen ya da önereni kapatılan süren öneri. finalize() atlar; açık öneri sayısına
-        # ve 30 günlük ret yasağına girmez (ikisi yalnızca VOTING/REJECTED'e bakar).
+        # Kabul edildi ama hedef artık uygun değildi (ör. üst konu kapandı): beklemez, sonuç budur.
+        FAILED = 'failed', 'Uygulanamadı'
+        # Moderasyon: gizlenen ya da önereni kapatılan süren öneri. finalize() atlar. İptal ve uygulanamadı
+        # açık öneri sayısına ve 30 günlük ret yasağına girmez (ikisi yalnızca VOTING/REJECTED'e bakar).
         CANCELLED = 'cancelled', 'İptal edildi'
 
     OWNER = 'proposer'
@@ -151,8 +153,8 @@ class BaseProposal(Commentable, Hideable):
         return t['yes'] > t['no']  # kural 4: ağırlıklı oyların yarısından fazlası evet, eşitlikte ret
 
     def apply(self):
-        """Kabul edilen öneriyi hedefe uygular. Uygulanamazsa (hedefin durumu artık uygun
-        değilse) False döner; öneri 'kabul' durumunda kalır, bir sonraki finalize() yeniden dener.
+        """Kabul edilen öneriyi hedefe uygular. Hedefin durumu artık uygun değilse hiçbir şeyi
+        değiştirmeden False döner; öneri 'uygulanamadı' diye sonuçlanır.
         """
         raise NotImplementedError
 
@@ -174,8 +176,8 @@ class BaseProposal(Commentable, Hideable):
                 # Önce 'uygulandı' diye işaretle ki öneri iki kez uygulanmasın (ör. aynı konu iki kez açılmasın).
                 claimed = type(self).objects.filter(pk=self.pk, status=self.Status.ACCEPTED).update(
                     status=self.Status.APPLIED, applied_at=now)
-                if claimed and not self.apply():
-                    transaction.set_rollback(True)  # hedef uygun değil: 'kabul' durumunda kalır
+                if claimed and not self.apply():  # hedef uygun değil: bekletmeden sonuçlanır
+                    type(self).objects.filter(pk=self.pk).update(status=self.Status.FAILED, applied_at=None)
             self.refresh_from_db(fields=['status', 'applied_at'])
 
     def clean(self):
