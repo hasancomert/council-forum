@@ -1,7 +1,6 @@
 from datetime import timedelta
 
 from django.conf import settings
-from django.contrib import admin
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.db.models import ProtectedError
@@ -246,7 +245,6 @@ class ReportTests(ModTestCase):
         self.assertEqual(Report.objects.count(), 1)
         c.set_hidden(True)
         self.assertEqual(self.report(c, make_user('carol')).status_code, 403)  # gizli içerik şikayet edilmez
-        self.assertFalse(admin.site.is_registered(Report))
 
     @override_settings(FORUM={**settings.FORUM, 'REPORT_RATE': (2, 60)})
     def test_report_rate_limit(self):
@@ -272,6 +270,16 @@ class ReportTests(ModTestCase):
         self.assertContains(r, '2 şikayet')
         self.assertNotContains(r, 'ihbarci')  # şikayet edenin kimliği gizli
         self.assertNotContains(self.client.get(mod_url(twice)), 'ihbarci')
+        root = make_user('kurucu')  # admin'de salt okunur liste, orada da gizli
+        User.objects.filter(pk=root.pk).update(is_staff=True, is_superuser=True)
+        self.login(root)
+        r = self.client.get('/admin/moderation/report/')
+        self.assertContains(r, 'İki kez', count=2)
+        self.assertNotContains(r, 'ihbarci')
+        pk = Report.objects.first().pk
+        self.assertNotContains(self.client.get(f'/admin/moderation/report/{pk}/change/'), 'ihbarci')
+        for action in ('add/', f'{pk}/delete/'):
+            self.assertEqual(self.client.get(f'/admin/moderation/report/{action}').status_code, 403)
 
     def test_hiding_closes_reports_dismiss_does_not_hide(self):
         a = Comment.objects.create(target=self.topic, author=self.alice, body='Gizlenecek')

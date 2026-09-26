@@ -84,16 +84,19 @@ class ModAction(models.Model):
 
 class Report(models.Model):
     """Şikayet: içerik kendiliğinden gizlenmez, yöneticinin kuyruğuna düşer. Şikayet edenin kimliği gizli:
-    yalnızca "içerik başına tek şikayet" ve hız sınırı için tutulur; hiçbir sayfada ve admin'de görünmez.
+    yalnızca "içerik başına tek şikayet" ve hız sınırı için tutulur; hiçbir sayfada ve admin'de görünmez
+    (admin'deki salt okunur listede de yok).
     """
-    content_type = models.ForeignKey(ContentType, models.CASCADE)
+    content_type = models.ForeignKey(ContentType, models.CASCADE, verbose_name='tür')
     object_id = models.PositiveIntegerField()
     target = GenericForeignKey()
     reporter = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='+')
-    created_at = models.DateTimeField(auto_now_add=True)
-    is_open = models.BooleanField(default=True)  # gizleme ya da "şikayetleri kapat" kapatır
+    created_at = models.DateTimeField('tarih', auto_now_add=True)
+    is_open = models.BooleanField('açık', default=True)  # gizleme ya da "şikayetleri kapat" kapatır
 
     class Meta:
+        verbose_name = 'şikayet'
+        verbose_name_plural = 'şikayetler'
         constraints = [
             models.UniqueConstraint(fields=['content_type', 'object_id', 'reporter'], name='icerik_basina_tek_sikayet'),
         ]
