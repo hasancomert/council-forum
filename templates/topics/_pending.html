@@ -1,3 +1,5 @@
 {# Konu hakkında süren kapatma/silme oylaması: rozet öneriye götürür (t: topics.views.with_pending'den geçmiş konu) #}
 {% if t.closing %}<a class="badge pending" href="{% url 'proposal' 'close' t.closing %}">Kapatma oylamasında</a>{% endif %}
 {% if t.deleting %}<a class="badge pending" href="{% url 'proposal' 'delete' t.deleting %}">Silme oylamasında</a>{% endif %}
+{% if t.parent_closing %}<a class="badge pending" href="{% url 'proposal' 'close' t.parent_closing %}">Üst konu kapatma oylamasında</a>{% endif %}
+{% if t.parent_deleting %}<a class="badge pending" href="{% url 'proposal' 'delete' t.parent_deleting %}">Üst konu silme oylamasında</a>{% endif %}

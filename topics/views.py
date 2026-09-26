@@ -20,15 +20,20 @@ TABS = {
     'sub': ('Alt konular', Q(parent__isnull=False, is_closed=False, parent__is_closed=False), 'popular'),
     'closed': ('Kapalı', Q(is_closed=True) | Q(parent__is_closed=True), 'new'),
 }
-def with_pending(qs):
+def with_pending(qs, parent=True):
     """'Kapatma/Silme oylamasında' rozetleri: süren önerinin pk'si (yoksa None). Satır başına alt sorgu,
     sorgu sayısı artmaz. Görünüm yapar: topics.models voting'i import edemez (voting topics'i import eder).
+    parent: alt konuda üst konunun süren kapatma/silme oylaması da (alt konu onunla birlikte kapanır).
     """
     now = timezone.now()
-    def running(model):
-        return Subquery(model.objects.filter(topic=OuterRef('pk'), status=BaseProposal.Status.VOTING,
+    def running(model, ref='pk'):
+        return Subquery(model.objects.filter(topic=OuterRef(ref), status=BaseProposal.Status.VOTING,
                                              voting_ends_at__gt=now).values('pk')[:1])
-    return qs.annotate(closing=running(TopicCloseProposal), deleting=running(TopicDeleteProposal))
+    qs = qs.annotate(closing=running(TopicCloseProposal), deleting=running(TopicDeleteProposal))
+    if parent:
+        qs = qs.annotate(parent_closing=running(TopicCloseProposal, 'parent'),
+                         parent_deleting=running(TopicDeleteProposal, 'parent'))
+    return qs
 
 
 SORT_LABELS = {'popular': 'En popüler', 'votes': 'En çok oy', 'new': 'En yeni'}
@@ -81,7 +86,8 @@ def detail(request, pk):
     if not topic.parent_id:  # ana konu: ilk TOPICS_PER_PAGE açık alt konu; gerisi ana sayfada ?parent= ile
         subs, open_q, closed_q = topic.children.visible(), TABS['sub'][1], TABS['closed'][1]
         context['n_subs'] = subs.aggregate(open=Count('pk', filter=open_q), closed=Count('pk', filter=closed_q))
-        context['subs'] = with_pending(subs.filter(open_q).ranked('popular'))[:settings.FORUM['TOPICS_PER_PAGE']]
+        subs = with_pending(subs.filter(open_q).ranked('popular'), parent=False)  # üst konunun rozeti başlıkta
+        context['subs'] = subs[:settings.FORUM['TOPICS_PER_PAGE']]
     return render(request, 'topics/detail.html', context)
 
 

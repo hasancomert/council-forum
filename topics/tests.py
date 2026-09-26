@@ -10,7 +10,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from comments.models import Comment, CommentVote
-from voting.models import TopicCloseProposal
+from voting.models import TopicCloseProposal, TopicDeleteProposal
 from voting.tests import make_user
 
 from .models import Topic, TopicVote
@@ -121,6 +121,16 @@ class TopicVoteTests(TestCase):
         self.assertContains(r, f'href="{p.get_absolute_url()}">Kapatma oylamasında</a>')  # alt konunun satırında
         self.assertContains(self.client.get(child.get_absolute_url()), 'Kapatma oylamasında')  # kendi başlığında
         self.assertContains(self.client.get('/?tab=sub'), 'Kapatma oylamasında')
+
+    def test_subtopic_shows_parent_pending_close(self):
+        child = Topic.objects.create(title='Alt', parent=self.topic, author=self.alice)
+        p = TopicDeleteProposal.objects.create(proposer=self.bob, topic=self.topic)
+        badge = f'href="{p.get_absolute_url()}">Üst konu silme oylamasında</a>'
+        self.assertContains(self.client.get(child.get_absolute_url()), badge)  # alt konunun başlığında
+        self.assertContains(self.client.get('/?tab=sub'), badge)  # alt konu satırında
+        r = self.client.get(self.topic.get_absolute_url())
+        self.assertContains(r, 'Silme oylamasında</a>', count=1)  # üst konunun sayfasında yalnızca başlıkta
+        self.assertNotContains(r, 'Üst konu silme')
 
 
 class HomeTests(TestCase):
