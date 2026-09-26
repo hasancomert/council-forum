@@ -19,8 +19,8 @@
     {% with here=request.resolver_match.url_name %}
     <nav class="menu" aria-label="Ana menü">
       <a href="{% url 'proposals' %}"{% if here == 'proposals' %} aria-current="page"{% endif %}>Öneriler</a>
-      <a href="{% url 'mod_log' %}"{% if here == 'mod_log' %} aria-current="page"{% endif %}>Moderasyon</a>
       {% if user.is_moderator %}<a href="{% url 'mod_queue' %}"{% if here == 'mod_queue' %} aria-current="page"{% endif %}>Şikayetler</a>{% endif %}
+      {% if user.is_staff %}<a href="{% url 'admin:index' %}">Admin</a>{% endif %}
       {% if user.is_authenticated %}
         <a class="me" href="{% url 'account' %}" title="Hesabım"{% if here == 'account' %} aria-current="page"{% endif %}>{{ user.username }}</a>
         <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button class="link">Çıkış</button></form>

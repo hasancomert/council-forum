@@ -292,7 +292,11 @@ class AdminTests(ModTestCase):
     def test_founding_and_moderation_fields_read_only(self):
         root = make_user('kurucu')
         User.objects.filter(pk=root.pk).update(is_staff=True, is_superuser=True)
-        self.login(root)
+        for user, links in ((self.bob, ()), (self.mod, ('/mod/',)), (root, ('/admin/',))):  # menü rolüne göre
+            self.login(user)
+            menu = self.client.get('/').content.decode().split('</nav>')[0]
+            self.assertEqual([u for u in ('/mod/', '/admin/') if f'href="{u}"' in menu], list(links))
+            self.assertNotIn('href="/mod/log/"', menu)  # moderasyon kaydı alt bilgide
         user_page = f'/admin/accounts/user/{self.bob.pk}/change/'
         r = self.client.get(user_page)
         for field in ('is_active', 'banned_until'):  # yalnızca moderasyonla (kayda düşsün)
