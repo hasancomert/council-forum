@@ -138,4 +138,9 @@ Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), ileride PW
 - Commit ve push'u kullanıcıya sormadan yapma.
 
 ## Durum
-1.–9. adım tamamlandı (9. adım `adim-9` dalında). Sıradaki: `DEPLOY.md`'ye göre sunucuya kurulum, hukuki metinlerin uzman kontrolü, kuruluş (ilk konular, yöneticiler, `FOUNDING=False`).
+1.–9. adım tamamlandı. Sıradaki 10. adım (kararlar verildi, `main`'den yeni dal):
+- Kurucu yetkisi: `Vote` admin'den kalkar (kural 6: kurucu da kimin ne oy verdiğini görmez); öneriler admin'de her zaman salt okunur; konular `FOUNDING=False` olunca salt okunur. Kurucu trol/suç durumunda yönetici olarak müdahale eder: kuruluş bitmeden kendi hesabını `is_moderator` işaretler, işlemleri herkese açık kayda düşer.
+- Alt konu üst konuyla hemen kapanır (ek süre yok, kural 7); üst konu kapatma/silme oylamasındayken alt konu satırında da rozet.
+- Kabul edilip uygulanamayan öneri "Uygulanamadı" durumuyla sonuçlanır; açık öneri sayısına ve ret yasağına girmez.
+
+Sonra: `DEPLOY.md`'ye göre sunucuya kurulum, hukuki metinlerin uzman kontrolü, kuruluş (ilk konular, yöneticiler, `FOUNDING=False`).
