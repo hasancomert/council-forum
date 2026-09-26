@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.conf import settings
+from django.contrib import admin
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import Http404
@@ -35,3 +36,17 @@ def over_limit(qs, setting):
     """Hız sınırı: FORUM[setting] = (n, dakika). qs'nin son `dakika` içindeki kaydı n'e ulaştıysa True."""
     n, minutes = settings.FORUM[setting]
     return qs.filter(created_at__gte=timezone.now() - timedelta(minutes=minutes)).count() >= n
+
+
+class ReadOnlyAdmin(admin.ModelAdmin):
+    """Admin'de yalnızca görüntüleme: ekleme, değiştirme ve silme kapalı. Kayıtlar sitedeki akıştan
+    (form, oylama, moderasyon) değişir; kurucu kural dışı müdahale edemez.
+    """
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

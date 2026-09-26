@@ -1,11 +1,13 @@
 from django.contrib import admin
 
+from config.utils import ReadOnlyAdmin
+
 from .models import Comment
 
 
 @admin.register(Comment)
-class CommentAdmin(admin.ModelAdmin):
-    # Salt okunur: yorum yazarındır, moderasyonla gizleme 8. adımda. Kural 6 gereği
+class CommentAdmin(ReadOnlyAdmin):
+    # Yorum yazarındır, gizleme yalnızca moderasyonla. Kural 6 gereği
     # kimin ne oy verdiği gizli kalsın diye CommentVote admin'e kaydedilmez.
     list_display = ('__str__', 'author', 'target_display', 'created_at', 'score', 'is_deleted', 'is_hidden')
     list_filter = ('is_deleted', 'is_hidden')
@@ -20,12 +22,3 @@ class CommentAdmin(admin.ModelAdmin):
     @admin.display(description='hedef')
     def target_display(self, obj):
         return obj.target
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False

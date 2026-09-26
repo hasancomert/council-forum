@@ -2,11 +2,13 @@ from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
 
+from config.utils import ReadOnlyAdmin
+
 from .models import Report
 
 
 @admin.register(Report)
-class ReportAdmin(admin.ModelAdmin):
+class ReportAdmin(ReadOnlyAdmin):
     # Kurucu için salt okunur liste. Şikayet eden hiçbir sütunda, süzgeçte ve aramada yok; işlem yalnızca
     # yöneticilerin mod/ sayfalarından yapılır ki herkese açık kayda düşsün.
     list_display = fields = readonly_fields = ('target_link', 'content_type', 'created_at', 'is_open')
@@ -20,12 +22,3 @@ class ReportAdmin(admin.ModelAdmin):
     def target_link(self, obj):
         return format_html('<a href="{}">{}</a>', reverse('goto', args=[obj.content_type_id, obj.object_id]),
                            str(obj.target) or '—')  # metni silinmiş yorum
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False

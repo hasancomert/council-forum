@@ -311,11 +311,20 @@ class AdminTests(ModTestCase):
             self.assertNotContains(r, f'name="{field}')
         self.assertContains(r, 'name="role"')  # kuruluşta açık
         p = TopicCloseProposal.objects.create(proposer=self.bob, topic=self.topic)
-        for url in (f'/admin/topics/topic/{self.topic.pk}/', f'/admin/voting/topiccloseproposal/{p.pk}/'):
+        topic_url, proposal_url = f'/admin/topics/topic/{self.topic.pk}/', f'/admin/voting/topiccloseproposal/{p.pk}/'
+        for url in (topic_url, proposal_url):
             self.assertNotContains(self.client.get(f'{url}change/'), 'name="is_hidden"')
+        self.assertContains(self.client.get(f'{topic_url}change/'), 'name="title"')  # kuruluşta düzenlenir
         self.assertEqual(self.client.get('/admin/topics/topic/add/').status_code, 200)
+        # öneriler hep salt okunur (yalnızca oylamayla sonuçlanır); oylar admin'de hiç yok (kural 6)
+        self.assertEqual(self.client.post(f'{proposal_url}change/', {}).status_code, 403)
+        for url in ('/admin/voting/topiccloseproposal/add/', f'{proposal_url}delete/'):
+            self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(self.client.get('/admin/voting/vote/').status_code, 404)
         with override_settings(FORUM={**settings.FORUM, 'FOUNDING': False}):  # kural 9: kuruluş bitti
             self.assertEqual(self.client.get('/admin/topics/topic/add/').status_code, 403)
+            self.assertNotContains(self.client.get(f'{topic_url}change/'), 'name="title"')  # yalnızca görüntüleme
+            self.assertEqual(self.client.post(f'{topic_url}change/', {'title': 'Yeni'}).status_code, 403)
             r = self.client.get(user_page)
             for field in ('role', 'is_moderator'):  # B statüsü oylamayla; yönetici ataması kuruluşla kapanır
                 self.assertNotContains(r, f'name="{field}"')

@@ -16,8 +16,12 @@ class TopicAdmin(admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         return self.readonly_fields + (('parent',) if obj else ())  # taşıma yok
 
+    # Kural 9: kurucu konuları yalnızca kuruluşta açar ve düzenler; sonrası tamamen oylamayla.
     def has_add_permission(self, request):
-        return settings.FORUM['FOUNDING'] and super().has_add_permission(request)  # kural 9
+        return settings.FORUM['FOUNDING'] and super().has_add_permission(request)
+
+    def has_change_permission(self, request, obj=None):
+        return settings.FORUM['FOUNDING'] and super().has_change_permission(request, obj)
 
     def has_delete_permission(self, request, obj=None):
         return False  # kural 7: gerçek silme yok, is_deleted kullanılır

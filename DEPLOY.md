@@ -221,6 +221,9 @@ PS> ssh root@SUNUCU_IP /srv/forum/deploy/update.sh v2026.09.25
   - Sağlayıcı imzalamıyorsa yurt içi bir alternatife geç.
 - **VERBİS:** çalışan sayısı 50'den az ve yıllık bilanço 100 milyon TL'den azsa kayıt gerekmez. Kontrol et.
 - **Kuruluş:**
-  1. Kurucu, admin'den ilk ana konuları açar ve yöneticileri işaretler.
+  1. Kurucu, admin'den ilk ana konuları açar ve yöneticileri işaretler. Trol ya da suç durumunda kendisi de
+     müdahale edecekse kendi hesabını da yönetici işaretler: müdahale moderasyon sayfalarından yapılır ve
+     herkese açık kayda düşer.
   2. Sonra `config/settings.py`'de `FORUM['FOUNDING'] = False` yapılıp güncellenir.
-  3. Bundan sonra konu açma yalnızca oylamayla olur; rol ve yönetici alanları salt okunurdur.
+  3. Bundan sonra konu açma ve düzenleme yalnızca oylamayla olur; admin'de konular, rol ve yönetici alanları
+     salt okunurdur. Öneriler admin'de hep salt okunur, oylar hiç görünmez (kural 6).
