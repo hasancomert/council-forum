@@ -1,20 +1,33 @@
-"""OOF tahminleriyle en iyi LightGBM/CatBoost ağırlığını bulur.
-Kullanım: python blend.py pevpsubmition2  ->  pevpsubmition2.csv"""
+"""OOF tahminleri üzerinde hill climbing ile harman ağırlıklarını bulur.
+Kullanım: python blend.py pevpsubmition2 lgbm_... xgb_... cat_...  ->  pevpsubmition2.csv"""
 import sys
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 
+out, tags = sys.argv[1], sys.argv[2:]
 y = (pd.read_csv("train.csv", usecols=["Will_Buy_EV"]).Will_Buy_EV == "Yes").to_numpy()
-oof = {n: np.load(f"oof_{n}.npy") for n in ("lgbm", "cat")}
-pred = {n: np.load(f"pred_{n}.npy") for n in ("lgbm", "cat")}
+oof = np.column_stack([np.load(f"oof_{t}.npy") for t in tags])
+pred = np.column_stack([np.load(f"pred_{t}.npy") for t in tags])
+single = [roc_auc_score(y, o) for o in oof.T]
+for t, s in zip(tags, single):
+    print(f"{s:.5f}  {t}")
 
-score, w = max((roc_auc_score(y, w * oof["lgbm"] + (1 - w) * oof["cat"]), w)
-               for w in np.linspace(0, 1, 21))
-print(f"lgbm ağırlığı {w:.2f}, harman CV AUC: {score:.5f}")
+# Her adımda harmana (tekrar seçilebilir) AUC'yi en çok artıran modeli ekle.
+counts = np.eye(len(tags))[np.argmax(single)]
+best = max(single)
+while True:
+    score, j = max((roc_auc_score(y, oof @ (counts + np.eye(len(tags))[j])), j)
+                   for j in range(len(tags)))
+    if score <= best + 1e-6:
+        break
+    best, counts[j] = score, counts[j] + 1
 
+w = counts / counts.sum()
+print("ağırlıklar:", {t: round(float(x), 3) for t, x in zip(tags, w) if x})
+print(f"harman CV AUC: {best:.5f}")
 sub = pd.read_csv("sample_submission.csv")
-sub["Will_Buy_EV"] = w * pred["lgbm"] + (1 - w) * pred["cat"]
-sub.to_csv(f"{sys.argv[1]}.csv", index=False)
-print(sub.shape, sub.head(3), sep="\n")
+sub["Will_Buy_EV"] = pred @ w
+sub.to_csv(f"{out}.csv", index=False)
+print(f"{out}.csv yazıldı, {len(sub)} satır")

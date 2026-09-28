@@ -1,21 +1,52 @@
 # Kaggle: Predicting Electric Vehicle Purchases (Playground S6E9)
 
-Hedef `Will_Buy_EV` (Yes/No), gönderim olasılık. Metrik ROC AUC varsayıldı.
+Hedef `Will_Buy_EV` (Yes/No), gönderim olasılık, metrik ROC AUC.
 Forum projesinden bağımsız; yalnızca bu klasör.
 
-## Çalıştırma
-Yarışma zip'indeki `train.csv`, `test.csv`, `sample_submission.csv` bu klasöre (Git'e girmez).
+## Veri
+Bu klasöre (Git'e girmez):
+- Yarışma zip'indeki `train.csv`, `test.csv`, `sample_submission.csv`
+- `original.csv`: orijinal veri (10.000 satır), Kaggle'da `itzzomkar/ev-adoption-behavior-and-range-anxiety`
+  (`EV_Adoption_and_Range_Anxiety_Dataset.csv`). Kopyası: GitHub `thasveer-art/EV-Adoption-Range-Anxiety-Analysis-using-Python`.
 
+## Çalıştırma
 ```
 python -m pip install -r requirements.txt
-python train.py              # lgbm + cat, 5 kat; oof_*.npy ve pred_*.npy yazar
-python train.py lgbm         # yalnızca biri
-python blend.py pevpsubmition2
+python train.py lgbm base,freq,dig,te1 0.02     # oof_/pred_<etiket>.npy
+python train.py xgb  base,freq,dig,te1 0.02
+python train.py cat  base,freq,dig,te1 0.05
+python blend.py pevpsubmition2 <etiket> <etiket> ...   # hill climbing, pevpsubmition2.csv
 ```
+
+## Özellik grupları (`train.py`)
+- `base`: ham 13 sütun
+- `freq`: yaş/gelir/mesafe değerinin veride kaç kez geçtiği (train+test+orijinal)
+- `dig`: gelirin `%10`, `%100`, `%1000`'i; mesafenin ondalık hanesi (sentetik veri izleri)
+- `te1`: her sütunun hedef kodlaması (sklearn `TargetEncoder`, kat içinde, cross-fitting)
+- `te2` / `te2s`: bütün / düşük kardinaliteli sütun ikilileri; `ted`: hane izlerinin hedef kodlaması
+- `ncat`: küçük tam sayı sütunları kategori olarak; `orig`: orijinal veri ek eğitim satırı
+
+Deneyler (LightGBM, öğrenme oranı 0.1, 5 kat CV AUC):
+
+| Gruplar | CV AUC |
+|---|---|
+| base | 0.94178 |
+| base,orig | 0.94177 |
+| base,freq | 0.94301 |
+| base,dig | 0.94354 |
+| base,freq,dig | 0.94381 |
+| base,freq,dig,ncat | 0.94307 |
+| **base,freq,dig,te1** | **0.94543** |
+| base,freq,dig,te1,orig | 0.94534 |
+| base,freq,dig,te1,ted | 0.94537 |
+| base,freq,dig,te2 | 0.94522 |
+| base,freq,dig,te2s | 0.94535 |
+
+XGBoost aynı ayarla base,freq,dig,te1: 0.94554.
 
 ## Gönderimler
 | No | İçerik | CV AUC | Public LB |
 |---|---|---|---|
-| 1 | LightGBM 0.6 + CatBoost 0.4 (olasılık ortalaması), ham özellikler | 0.94201 | 0.94176 |
+| 1 | LightGBM 0.6 + CatBoost 0.4, ham özellikler | 0.94201 | 0.94176 |
 
-Tek modeller (1. gönderim): LightGBM 0.94190 (~3 dk), CatBoost 0.94178 (~22 dk, 4 çekirdek CPU).
+1. gönderimin tek modelleri: LightGBM 0.94190 (~3 dk), CatBoost 0.94178 (~22 dk, 4 çekirdek CPU).
