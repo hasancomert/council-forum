@@ -9,6 +9,11 @@ Bu klasöre (Git'e girmez):
 - `original.csv`: orijinal veri (10.000 satır), Kaggle'da `itzzomkar/ev-adoption-behavior-and-range-anxiety`
   (`EV_Adoption_and_Range_Anxiety_Dataset.csv`). Kopyası: GitHub `thasveer-art/EV-Adoption-Range-Anxiety-Analysis-using-Python`.
 
+## Kaggle bağlantısı (GPU)
+Ortamda `KAGGLE_USERNAME` + `KAGGLE_KEY` (ya da `KAGGLE_API_TOKEN`) ve ağ izni
+(`www.kaggle.com`, `api.kaggle.com`, `storage.googleapis.com`) varsa: veri `kaggle competitions download`
+ile iner, ağır eğitim `kaggle kernels push` ile Kaggle GPU'sunda çalışır. Gönderim yalnızca kullanıcı isteyince.
+
 ## Çalıştırma
 ```
 python -m pip install -r requirements.txt
