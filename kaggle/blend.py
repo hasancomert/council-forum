@@ -1,5 +1,5 @@
 """OOF tahminleri üzerinde hill climbing ile harman ağırlıklarını bulur.
-Kullanım: python blend.py pevpsubmition2 lgbm_... xgb_... cat_...  ->  pevpsubmition2.csv"""
+Kullanım: python blend.py pevpsubmission3 lgbm_... xgb_... cat_...  ->  pevpsubmission3.csv"""
 import sys
 
 import numpy as np

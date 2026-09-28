@@ -15,7 +15,7 @@ python -m pip install -r requirements.txt
 python train.py lgbm base,freq,dig,te1 0.02     # oof_/pred_<etiket>.npy
 python train.py xgb  base,freq,dig,te1 0.02
 python train.py cat  base,freq,dig,te1 0.05
-python blend.py pevpsubmition2 <etiket> <etiket> ...   # hill climbing, pevpsubmition2.csv
+python blend.py pevpsubmission3 <etiket> <etiket> ...   # hill climbing, pevpsubmission3.csv
 ```
 
 ## Özellik grupları (`train.py`)
@@ -45,6 +45,7 @@ Deneyler (LightGBM, öğrenme oranı 0.1, 5 kat CV AUC):
 XGBoost aynı ayarla base,freq,dig,te1: 0.94554.
 
 ## Gönderimler
+Dosya adı `pevpsubmissionN.csv` (1 ve 2 eski yazımla: `pevpsubmitionN.csv`).
 | No | İçerik | CV AUC | Public LB |
 |---|---|---|---|
 | 1 | LightGBM 0.6 + CatBoost 0.4, ham özellikler | 0.94201 | 0.94176 |
