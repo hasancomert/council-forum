@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { api, hasToken, loadToken, onSessionEnd, setToken, type Me } from './api';
 
@@ -20,9 +20,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState(0);
   const changed = () => setSession((n) => n + 1);
 
-  const refresh = async () => {
+  // sabit fonksiyon: ekranlar odak efektinde çağırır (her çizimde yenisi olsa efekt döngüye girerdi)
+  const refresh = useCallback(async () => {
     if (hasToken()) setMe(await api<Me>('me/').catch(() => null)); // 401'de api() jetonu siler
-  };
+  }, []);
 
   useEffect(() => {
     onSessionEnd(() => {
@@ -35,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setReady(true);
         refresh();
       });
-  }, []);
+  }, [refresh]);
 
   const auth: Auth = {
     me,
