@@ -1,7 +1,8 @@
 // Ortak arayüz parçaları; görünüm static/css/site.css'teki sınıflarla aynı (.button, .primary, .chip, .badge, .notice).
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import { errorText } from '@/lib/api';
 import { size, themed, useColors } from '@/lib/theme';
 
 // Dokunma hedefi en az 44px: görünen boyut küçük, hitSlop kenarlardan taşar (sitedeki görünmez ::after).
@@ -10,31 +11,44 @@ const slop = 4;
 type ButtonProps = {
   title: string;
   onPress: () => void;
-  kind?: 'plain' | 'primary' | 'chip';
+  kind?: 'plain' | 'primary' | 'chip' | 'small' | 'quiet'; // small: çerçevesiz (.actions), quiet: gri (şikayet)
   pressed?: boolean; // verilen oy / seçili seçenek: dolgulu (aria-pressed)
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
+  label?: string; // ekran okuyucu adı (simgeli düğme)
 };
 
-export function Button({ title, onPress, kind = 'plain', pressed, disabled, style }: ButtonProps) {
+export function Button({ title, onPress, kind = 'plain', pressed, disabled, style, label }: ButtonProps) {
   const s = useStyles();
-  const filled = kind === 'primary' || pressed;
+  const bare = kind === 'small' || kind === 'quiet';
+  const filled = kind === 'primary' || (pressed && !bare); // çerçevesizde açık olan işlem açık mavi zeminli
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       hitSlop={slop}
       accessibilityRole="button"
+      accessibilityLabel={label}
       accessibilityState={{ disabled, selected: pressed }}
       style={({ pressed: down }) => [
         s.button,
         kind === 'chip' && s.chip,
+        bare && s.small,
+        bare && pressed && s.open,
         filled && s.filled,
         disabled && s.disabled,
         down && s.down,
         style,
       ]}>
-      <Text style={[s.buttonText, kind === 'chip' && s.chipText, filled && s.filledText]}>{title}</Text>
+      <Text
+        style={[
+          s.buttonText,
+          (kind === 'chip' || kind === 'small') && s.chipText,
+          kind === 'quiet' && s.quietText,
+          filled && s.filledText,
+        ]}>
+        {title}
+      </Text>
     </Pressable>
   );
 }
@@ -76,6 +90,32 @@ export function Status({ error, onRetry }: { error?: string; onRetry?: () => voi
   );
 }
 
+/** Sil, şikayet et gibi geri alınamayan işlemin onayı (sitedeki açılır <details> formu). run bir mesaj
+ *  döndürürse (ör. "Şikayetin iletildi") yeşil kutuda gösterilir; hata kırmızı kutuda. */
+export function ConfirmBox({ text, action, run }: { text: string; action: string; run: () => Promise<string | void> }) {
+  const s = useStyles();
+  const [result, setResult] = useState<{ text: string; ok: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (result) return <Notice tone={result.ok ? 'ok' : 'error'}>{result.text}</Notice>;
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      const message = await run();
+      if (message) setResult({ text: message, ok: true });
+    } catch (e) {
+      setResult({ text: errorText(e), ok: false });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Row style={s.confirm}>
+      <Text style={s.muted}>{text}</Text>
+      <Button title={action} onPress={confirm} disabled={busy} />
+    </Row>
+  );
+}
+
 export function Row({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   return <View style={[{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: size.s2 }, style]}>{children}</View>;
 }
@@ -95,6 +135,9 @@ const useStyles = themed((c) => ({
   buttonText: { color: c.text, fontSize: 16, fontWeight: '600' },
   chip: { minHeight: size.chip, paddingHorizontal: 13, borderColor: c.accentLine },
   chipText: { color: c.accent, fontSize: 15 },
+  small: { minHeight: size.chip, paddingHorizontal: 10, borderWidth: 0, backgroundColor: 'transparent' },
+  open: { backgroundColor: c.accentSoft },
+  quietText: { color: c.muted, fontSize: 15 },
   filled: { borderColor: c.accent, backgroundColor: c.accent },
   filledText: { color: c.accentText },
   disabled: { opacity: 0.45 },
@@ -127,4 +170,6 @@ const useStyles = themed((c) => ({
   noticeError: { borderLeftColor: c.danger, backgroundColor: c.dangerSoft },
   noticeOk: { borderLeftColor: c.ok, backgroundColor: c.okSoft },
   status: { padding: size.s4, gap: size.s3, alignItems: 'center' },
+  confirm: { marginVertical: size.s2 },
+  muted: { color: c.muted, fontSize: size.sm },
 }));

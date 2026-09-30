@@ -143,3 +143,22 @@ export type Topic = {
   subs: TopicRow[];
   n_subs: { open: number; closed: number } | null;
 };
+
+type Shown = {
+  author: string;
+  body: string;
+  created: string;
+  edited: boolean;
+  hidden: boolean; // gizli ama ben görebiliyorum (yazarı ya da yönetici)
+  score: number;
+  mine: -1 | 0 | 1;
+  why: string;
+  frozen: boolean; // hedef kapalı ya da yorum gizli: yanıt ve oy yok
+  own: boolean;
+  can_report: boolean;
+};
+
+/** Silinen ya da başkasına gizli yorumda (deleted/masked) metin, yazar ve oy alanları gelmez. */
+export type Comment = { pk: number; deleted: boolean; masked: boolean; replies: Comment[] } & Partial<Shown>;
+
+export type CommentPage = Paged<Comment> & { count: number; open: boolean; can_post: boolean; ct: number; sort: string };

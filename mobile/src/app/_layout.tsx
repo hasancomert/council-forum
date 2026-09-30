@@ -21,6 +21,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="login" options={{ title: 'Giriş yap', presentation: 'modal' }} />
           <Stack.Screen name="topic/[pk]" options={{ title: 'Konu' }} />
+          <Stack.Screen name="subtopics/[pk]" options={{ title: 'Alt konular' }} />
         </Stack>
       </AuthProvider>
     </ThemeProvider>

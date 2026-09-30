@@ -239,6 +239,7 @@ def comments(request, ct, pk):
         return {'pk': create(user, target, request.data).pk}, 201
     s = section(target, user, request.GET.get('sort'), request.GET.get('page'))
     return {'count': s['count'], 'open': s['open'], 'can_post': user.is_authenticated and user.can_post,
+            'ct': ct_of(Comment),  # yorumun şikayet adresi için
             'sort': 'new' if s['sort'] == 'new' else 'top', 'results': [comment(c, user) for c in s['comments']],
             **pages(s['page'])}
 

@@ -125,7 +125,7 @@ class CommentTests(ApiTestCase):
         self.assertEqual(self.call(self.url(), {'body': ' '}, user=self.bob).json(), {'error': 'Yorum boş ya da çok uzun.'})
         self.assertEqual(self.call(self.url(), {'body': 'x'}).status_code, 401)
         d = self.call(self.url(), user=self.alice).json()
-        self.assertEqual((d['count'], d['can_post'], len(d['results'])), (3, True, 1))
+        self.assertEqual((d['count'], d['can_post'], len(d['results']), d['ct']), (3, True, 1, ct(Comment)))
         c = d['results'][0]
         self.assertEqual((c['body'], c['own'], c['can_report']), ('İlk', False, True))
         self.assertEqual([r['body'] for r in c['replies']], ['Yanıt', 'Yanıta yanıt'])

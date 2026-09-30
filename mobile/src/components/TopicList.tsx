@@ -43,11 +43,11 @@ export function TopicItem({ t, showParent = true }: { t: TopicRow; showParent?: 
   );
 }
 
-/** parent verilirse yalnızca o konunun alt konuları (sitedeki ?parent=). */
-export function TopicList({ parent, header }: { parent?: string; header?: ReactElement }) {
+/** parent verilirse yalnızca o konunun alt konuları (sitedeki ?parent=); tab: açılıştaki sekme. */
+export function TopicList({ parent, tab: first, header }: { parent?: string; tab?: string; header?: ReactElement }) {
   const s = useStyles();
   const c = useColors();
-  const [tab, setTab] = useState(parent ? 'sub' : 'main');
+  const [tab, setTab] = useState(first ?? (parent ? 'sub' : 'main'));
   const [sort, setSort] = useState('');
   const query = Object.entries({ tab, sort, parent })
     .filter(([, v]) => v)
@@ -68,6 +68,7 @@ export function TopicList({ parent, header }: { parent?: string; header?: ReactE
       ListHeaderComponent={
         <View>
           {header}
+          {meta?.parent && <Text style={s.h1}>{meta.parent.title} alt konuları</Text>}
           {meta && (
             <>
               <View style={s.tabs} accessibilityRole="tablist">
@@ -109,6 +110,7 @@ export function TopicList({ parent, header }: { parent?: string; header?: ReactE
 
 const useStyles = themed((c) => ({
   content: { padding: size.s3, paddingBottom: size.s4 * 2 },
+  h1: { color: c.text, fontSize: size.xl, fontWeight: '800', marginBottom: size.s3 },
   tabs: { flexDirection: 'row', borderBottomWidth: 1, borderColor: c.line, marginBottom: size.s3 },
   tab: { minHeight: 44, justifyContent: 'center', paddingHorizontal: size.s3, borderBottomWidth: 3, borderColor: 'transparent' },
   tabOn: { borderColor: c.accent },

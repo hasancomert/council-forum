@@ -3,8 +3,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { api, hasToken, loadToken, onSessionEnd, setToken, type Me } from './api';
 
 type Auth = {
-  me: Me | null; // giriş yoksa null
-  ready: boolean; // kayıtlı jeton okundu mu
+  me: Me | null; // giriş yoksa (ya da henüz gelmediyse) null
+  session: number; // giriş/çıkışta artar: kişiye özel ekranlar key={session} ile baştan yüklenir
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>; // rol, oy hakkı, açık öneri sayısı değişmiş olabilir
@@ -12,36 +12,48 @@ type Auth = {
 
 const AuthContext = createContext<Auth | null>(null);
 
+/** Kayıtlı jeton okunana kadar ekran çizilmez: ilk istekler jetonla gitsin. me arkadan gelir (sunucu yavaşsa
+ *  uygulama beklemez). */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [ready, setReady] = useState(false);
+  const [session, setSession] = useState(0);
+  const changed = () => setSession((n) => n + 1);
 
   const refresh = async () => {
     if (hasToken()) setMe(await api<Me>('me/').catch(() => null)); // 401'de api() jetonu siler
   };
 
   useEffect(() => {
-    onSessionEnd(() => setMe(null));
+    onSessionEnd(() => {
+      setMe(null);
+      changed();
+    });
     loadToken()
-      .then(refresh)
-      .finally(() => setReady(true));
+      .catch(() => {})
+      .finally(() => {
+        setReady(true);
+        refresh();
+      });
   }, []);
 
   const auth: Auth = {
     me,
-    ready,
+    session,
     refresh,
     login: async (username, password) => {
       const d = await api<{ token: string; me: Me }>('login/', { username, password });
       await setToken(d.token);
       setMe(d.me);
+      changed();
     },
     logout: async () => {
       await setToken(null); // jeton yalnızca telefonda; sunucuda tutulmaz
       setMe(null);
+      changed();
     },
   };
-  return <AuthContext value={auth}>{children}</AuthContext>;
+  return <AuthContext value={auth}>{ready ? children : null}</AuthContext>;
 }
 
 export function useAuth() {
