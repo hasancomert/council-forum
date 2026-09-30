@@ -5,6 +5,7 @@
 - Konu/alt konu açma, düzenleme, silme, kapatma: hepsi oylamayla.
 - Konulardan doğan istekler, tartışma süresinden sonra oylanır.
 - Kapatılan konular silinmez. Yorumlarda upvote/downvote var.
+- Proje bir ödev: teslim 3 Ekim 2026. Hoca site + telefonda çalışan uygulama istiyor; ikisi de yerelde (`runserver`) çalışan aynı forumu göstermeli. Yayına alma (`DEPLOY.md`) ve hukuki işler ödev için gerekli değil, sonraya kaldı.
 
 ## Roller
 - A: normal üye, oy ağırlığı 1
@@ -31,7 +32,7 @@ Sayılar koda gömülmez, ayar olarak tutulur.
 - Sıralama: en çok oy, en yeni, en popüler (tanımı 7. adımda)
 
 ## Teknoloji
-Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), ileride PWA
+Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), PWA ✓. Mobil uygulama: Expo (React Native, TypeScript, Expo Router) `mobile/` klasöründe; site ile aynı Django'ya `/api/` üzerinden bağlanır.
 
 ## Ortam
 - Windows, VS Code, PowerShell. Kod: Claude Code (Claude masaüstü uygulaması, Code sekmesi, Local).
@@ -46,6 +47,7 @@ Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), ileride PW
   Önbellek tablosu bir kez: `python manage.py createcachetable`.
 - Git: GitHub'da private `forum` deposu, dal `main`.
   `.gitignore`: `.venv/`, `__pycache__/`, `db.sqlite3`, `.env`, `.vscode/`, `staticfiles/`. `.gitattributes`: `deploy/` LF.
+- Mobil (11. adım): bilgisayarda Node.js LTS (`winget install OpenJS.NodeJS.LTS`), telefonlarda (Android + iPhone) Expo Go. Çalıştırma: `python manage.py runserver 0.0.0.0:8000` ve `mobile` klasöründe `npm install` (bir kez), `npx expo start`, QR'ı telefonla okut. Bilgisayar ve telefon aynı ağda (sunumda en güvenlisi telefonun hotspot'u); Windows güvenlik duvarı Python/Node için izin sorarsa ver (hotspot "Ortak ağ" sayılırsa ortak ağa da).
 - Yayın: `DEPLOY.md` (Türkiye'de VPS, Ubuntu 26.04, Caddy + gunicorn + PostgreSQL + systemd), sunucu dosyaları `deploy/`.
 
 ## Kararlar ve notlar
@@ -121,6 +123,7 @@ Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), ileride PW
 8. Moderasyon: gizleme, engelleme, herkese açık moderasyon kaydı ✓
 9. Yayın hazırlığı: tasarım, mobil uyum, PWA, yayın ayarları, hukuki metinler, `DEPLOY.md` ✓ (sunucuya kurulum ve hukuki kontrol kullanıcıda)
 10. Kurucu yetkisinin sınırı (admin salt okunur, oylar admin'de yok), alt konuda üst konu rozeti, "Uygulanamadı" durumu ✓
+11. Mobil uygulama (Expo) ve JSON API (sürüyor, `adim-11`)
 
 ## Çalışma
 - Adım adım, Türkçe, kısa açıklamalı (kullanıcı uzun anlatım istemiyor). Her adım yeni sohbette; adım bitince bu dosya güncellenir.
@@ -137,4 +140,34 @@ Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), ileride PW
 - Commit ve push'u kullanıcıya sormadan yapma.
 
 ## Durum
-1.–10. adım tamamlandı (10. adım `adim-10` dalında). Sıradaki: `DEPLOY.md`'ye göre sunucuya kurulum, hukuki metinlerin uzman kontrolü, kuruluş (ilk konular, yöneticiler ve kurucunun kendi yönetici işareti, `FOUNDING=False`).
+1.–10. adım tamamlandı ve `main`'de. Sıradaki: 11. adım, `adim-11` dalında (plan aşağıda; kullanıcı onaylayınca A parçasından başlanır; teslim 3 Ekim 2026).
+
+### 11. adım planı: mobil uygulama
+Her parça ayrı commit, testler geçer, `adim-11`'e push; sonunda PR. Uygulama tarafı bulutta `npx tsc --noEmit` (ve
+istenirse Expo'nun web önizlemesi) ile denetlenir; gerçek telefonda denemek kullanıcıda.
+- **A. API** (Django, yeni `api` uygulaması, ek paket yok): `/api/` altında JSON: giriş (takma ad + şifre → jeton), ben,
+  konular (`TABS`/`SORTS`/sayfa/`?parent=`, `with_pending()` rozetleri), konu (+ alt konular, benim ▲/▼'m, `vote_block` nedeni),
+  konu ▲/▼, yorumlar (sıralı + sayfalı, yanıtlar, yazma, yanıt, silme, ▲/▼), öneriler (`active_proposals()` + yeter sayı),
+  öneri (sonuç yalnızca `results_visible`, kural 6), karar oyu, yeni öneri, şikayet. Jeton: `django.core.signing` ile imzalı
+  {kullanıcı pk + `get_session_auth_hash()`}, süresi ayarda; şifre değişince geçersiz. `Authorization: Bearer <jeton>`,
+  çerez yok, CSRF gerekmez. Kurallar yeniden yazılmaz: sitenin model metotları (`Vote.cast`, `UpDownVote.cast`, `clean()`,
+  `can_vote`, `can_post`, `hidden_from`, `over_limit`) çağrılır; gizli içerik ve oy gizliliği sitedekiyle aynı. Yeni öneri:
+  API öneri tipinin ModelForm alanlarını (ad, etiket, tür, zorunlu, seçenekler, başlangıç) JSON verir, hataları alan
+  bazında döner; uygulamada tek genel form ekranı. DEBUG'da `ALLOWED_HOSTS` boşsa yerel ağdan (telefon) bağlantı kabul
+  edilir. Testler `api/tests.py`.
+- **B. Expo iskeleti** (`mobile/`, en güncel Expo SDK: telefondaki Expo Go aynı sürümü ister): Expo Router, TypeScript.
+  Sunucu adresi kendiliğinden: `Constants.expoConfig.hostUri`'deki bilgisayar IP'si + `:8000`. Jeton `expo-secure-store`'da.
+  Giriş ekranı; "Kayıt ol"/"Şifremi unuttum" sitede açılır. Ana sayfa: sekmeler, sıralama, konu satırı (puan, rozetler,
+  süre), aşağı çekip yenileme, kaydırdıkça yükleme. Renkler `site.css`'teki değişkenlerle aynı, koyu tema `useColorScheme`.
+- **C. Konu:** konu ekranı, ▲/▼ (kendi içeriğinde ve kapalıda devre dışı, nedeniyle), alt konular, yorumlar ve yanıtlar,
+  yorum yazma, silme, şikayet.
+- **D. Öneriler:** açık öneriler (katılım çubuğu, "Oy ver" rozeti), öneri ekranı (Evet/Hayır aynı görünüm; bitince
+  yeşil/kırmızı sonuç çubuğu, "Uygulanamadı"/"İptal"), konudan yeni öneri (alt konu, istek, düzenleme, kapatma, silme,
+  geri alma) ve bilirkişilik önerisi.
+- **E. Hesap ve sunum:** Hesabım (takma ad, rol, oy hakkı durumu, çıkış), `mobile/README.md` (kurulum, çalıştırma,
+  sorun giderme), `CLAUDE.md`, kısa sunum notları (mimari, kurallar nerede, demo senaryosu: telefondan oy → sitede görünür).
+- Kapsam dışı (uygulamada sitenin sayfası açılır): kayıt, e-posta doğrulama, şifre işlemleri, moderasyon, admin, hesap silme.
+
+Sonra (ödevden sonra, isteğe bağlı): `DEPLOY.md`'ye göre sunucu, hukuki kontrol, kuruluş (ilk konular, yöneticiler ve
+kurucunun kendi yönetici işareti, `FOUNDING=False`); giriş/şifre sıfırlamada hız sınırı, "Nasıl çalışır" sayfası,
+kuruluş sonrası yönetici atama yöntemi, profil, sonuçlanan öneriler, bildirimler, arama.
