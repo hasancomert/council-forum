@@ -22,6 +22,8 @@ export default function RootLayout() {
           <Stack.Screen name="login" options={{ title: 'Giriş yap', presentation: 'modal' }} />
           <Stack.Screen name="topic/[pk]" options={{ title: 'Konu' }} />
           <Stack.Screen name="subtopics/[pk]" options={{ title: 'Alt konular' }} />
+          <Stack.Screen name="proposal/[slug]/[pk]" options={{ title: 'Öneri' }} />
+          <Stack.Screen name="new/[slug]" options={{ title: 'Yeni öneri' }} />
         </Stack>
       </AuthProvider>
     </ThemeProvider>

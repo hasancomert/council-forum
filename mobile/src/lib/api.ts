@@ -162,3 +162,52 @@ type Shown = {
 export type Comment = { pk: number; deleted: boolean; masked: boolean; replies: Comment[] } & Partial<Shown>;
 
 export type CommentPage = Paged<Comment> & { count: number; open: boolean; can_post: boolean; ct: number; sort: string };
+
+export type ProposalItem = {
+  slug: string;
+  pk: number;
+  kind: string;
+  title: string;
+  discussion: boolean; // istek tartışmada: henüz oylanmaz
+  left: string; // evresinin bitişine kalan süre
+  participants: number;
+  voted: boolean | null; // null: oy hakkım yok ya da giriş yok
+};
+
+export type Proposal = {
+  slug: string;
+  pk: number;
+  ct: number;
+  kind: string;
+  title: string;
+  masked: boolean;
+  hidden: boolean;
+  proposer: string;
+  created: string;
+  topic: Ref | null;
+  details: { label: string; value: string }[];
+  status: 'voting' | 'accepted' | 'rejected' | 'applied' | 'failed' | 'cancelled';
+  status_label: string;
+  discussion_ends: string | null; // tartışmadaysa oylamanın başlangıcı
+  ends: string;
+  left: string;
+  turnout: { n: number; quorum: number } | null; // kural 6: oylama sürerken yalnızca katılım
+  result: { yes: number; no: number; count: number; quorum: number; weighted: boolean; applied: string | null } | null;
+  accepts: boolean;
+  mine: 'yes' | 'no' | null;
+  why: string;
+  can_report: boolean;
+};
+
+export type Field = {
+  name: string;
+  label: string;
+  help: string;
+  required: boolean;
+  type: 'line' | 'text' | 'choice';
+  choices: [string, string][];
+  max_length: number | null;
+  initial: string;
+};
+
+export type ProposalForm = { title: string; target: string | null; fields: Field[] };

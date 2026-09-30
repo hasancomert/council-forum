@@ -4,14 +4,17 @@ import { useState, type ReactElement } from 'react';
 import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 
 import type { Pending, TopicList as List, TopicRow } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { usePaged } from '@/lib/paged';
 import { size, themed, useColors } from '@/lib/theme';
 
 import { Badge, Button, Row, Status } from './ui';
 
-/** Süren kapatma/silme oylaması rozetleri. */
+/** Süren kapatma/silme oylaması rozetleri: öneriye götürür. */
 export function PendingBadges({ pending }: { pending: Pending[] }) {
-  return pending.map((p) => <Badge key={p.pk + p.slug} label={p.label} tone="pending" />);
+  return pending.map((p) => (
+    <Badge key={p.pk + p.slug} label={p.label} tone="pending" onPress={() => router.push(`/proposal/${p.slug}/${p.pk}`)} />
+  ));
 }
 
 export function TopicItem({ t, showParent = true }: { t: TopicRow; showParent?: boolean }) {
@@ -47,6 +50,7 @@ export function TopicItem({ t, showParent = true }: { t: TopicRow; showParent?: 
 export function TopicList({ parent, tab: first, header }: { parent?: string; tab?: string; header?: ReactElement }) {
   const s = useStyles();
   const c = useColors();
+  const { me } = useAuth();
   const [tab, setTab] = useState(first ?? (parent ? 'sub' : 'main'));
   const [sort, setSort] = useState('');
   const query = Object.entries({ tab, sort, parent })
@@ -69,6 +73,12 @@ export function TopicList({ parent, tab: first, header }: { parent?: string; tab
         <View>
           {header}
           {meta?.parent && <Text style={s.h1}>{meta.parent.title} alt konuları</Text>}
+          <Button
+            kind="primary"
+            title={parent ? 'Alt konu öner' : 'Yeni ana konu öner'}
+            onPress={() => router.push(me ? `/new/open${parent ? `?topic=${parent}` : ''}` : '/login')}
+            style={s.propose}
+          />
           {meta && (
             <>
               <View style={s.tabs} accessibilityRole="tablist">
@@ -111,6 +121,7 @@ export function TopicList({ parent, tab: first, header }: { parent?: string; tab
 const useStyles = themed((c) => ({
   content: { padding: size.s3, paddingBottom: size.s4 * 2 },
   h1: { color: c.text, fontSize: size.xl, fontWeight: '800', marginBottom: size.s3 },
+  propose: { alignSelf: 'flex-start', marginBottom: size.s3 },
   tabs: { flexDirection: 'row', borderBottomWidth: 1, borderColor: c.line, marginBottom: size.s3 },
   tab: { minHeight: 44, justifyContent: 'center', paddingHorizontal: size.s3, borderBottomWidth: 3, borderColor: 'transparent' },
   tabOn: { borderColor: c.accent },

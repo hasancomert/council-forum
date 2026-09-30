@@ -10,6 +10,29 @@ import { api, errorText, openSite, type Topic } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { size, themed } from '@/lib/theme';
 
+// Sık kullanılanlar önde; konunun kendisini değiştiren öneriler "Diğer öneriler"de (topics/detail.html).
+const MORE = ['edit', 'close', 'delete'];
+
+function Actions({ t }: { t: Topic }) {
+  const s = useStyles();
+  const [more, setMore] = useState(false);
+  const link = ([slug, label]: [string, string]) => (
+    <Button key={slug} kind="chip" title={label} onPress={() => router.push(`/new/${slug}?topic=${t.pk}`)} />
+  );
+  const others = t.actions.filter(([slug]) => MORE.includes(slug));
+  return (
+    <View style={s.actions}>
+      <Row>
+        {t.actions.filter(([slug]) => !MORE.includes(slug)).map(link)}
+        {others.length > 0 && (
+          <Button kind="chip" title={`Diğer öneriler ${more ? '▴' : '▾'}`} pressed={more} onPress={() => setMore(!more)} />
+        )}
+      </Row>
+      {more && <Row>{others.map(link)}</Row>}
+    </View>
+  );
+}
+
 function TopicHeader({ t }: { t: Topic }) {
   const s = useStyles();
   const { me } = useAuth();
@@ -52,6 +75,7 @@ function TopicHeader({ t }: { t: Topic }) {
           ) : null}
         </>
       )}
+      {t.actions.length > 0 && <Actions t={t} />}
       {n && (
         <View>
           <Text style={s.h2}>Alt konular</Text>
@@ -126,4 +150,5 @@ const useStyles = themed((c) => ({
   meta: { color: c.muted, fontSize: size.sm },
   text: { color: c.text, fontSize: 16, lineHeight: 25 },
   more: { marginTop: size.s3 },
+  actions: { gap: size.s2, marginTop: size.s2 },
 }));

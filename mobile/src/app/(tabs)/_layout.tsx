@@ -11,6 +11,7 @@ export default function TabLayout() {
   return (
     <Tabs screenOptions={{ headerTitleStyle: { fontWeight: '800' } }}>
       <Tabs.Screen name="index" options={{ title: 'Konular', tabBarIcon: icon('☰') }} />
+      <Tabs.Screen name="proposals" options={{ title: 'Öneriler', tabBarIcon: icon('✓') }} />
       <Tabs.Screen name="account" options={{ title: 'Hesabım', tabBarIcon: icon('◉') }} />
     </Tabs>
   );

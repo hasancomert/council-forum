@@ -1,6 +1,6 @@
 // Ortak arayüz parçaları; görünüm static/css/site.css'teki sınıflarla aynı (.button, .primary, .chip, .badge, .notice).
 import { useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
 
 import { errorText } from '@/lib/api';
 import { size, themed, useColors } from '@/lib/theme';
@@ -116,8 +116,12 @@ export function ConfirmBox({ text, action, run }: { text: string; action: string
   );
 }
 
-export function Row({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <View style={[{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: size.s2 }, style]}>{children}</View>;
+export function Row({ children, style, ...rest }: ViewProps) {
+  return (
+    <View style={[{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: size.s2 }, style]} {...rest}>
+      {children}
+    </View>
+  );
 }
 
 const useStyles = themed((c) => ({
