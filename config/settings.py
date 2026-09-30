@@ -66,7 +66,8 @@ def required(name, dev_default):
 
 
 SECRET_KEY = required('SECRET_KEY', 'django-insecure-yalnizca-gelistirme')
-ALLOWED_HOSTS = env_list('ALLOWED_HOSTS')  # DEBUG'da boşsa localhost geçer
+# DEBUG'da boşsa her ad: telefon (mobil uygulama) bilgisayara yerel ağ IP'siyle bağlanır (runserver 0.0.0.0:8000)
+ALLOWED_HOSTS = env_list('ALLOWED_HOSTS') or (['*'] if DEBUG else [])
 CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')  # yalnızca başka bir alan adından form gelecekse
 
 INSTALLED_APPS = [
@@ -81,6 +82,7 @@ INSTALLED_APPS = [
     'voting',
     'comments',
     'moderation',
+    'api',
 ]
 
 MIDDLEWARE = [
@@ -226,5 +228,6 @@ FORUM = {
     'BAN_DAYS': (1, 7, 30, 365),  # seçilebilen engel süreleri (gün); kalıcı engel yok, sahte hesap kapatılır
     'MOD_PER_PAGE': 50,  # moderasyon kaydı ve şikayet kuyruğu
     'REPORT_RATE': (10, 60),  # hız sınırı: 60 dakikada en fazla 10 şikayet
+    'API_TOKEN_DAYS': 30,  # mobil uygulamanın giriş jetonu bu kadar gün geçerli (şifre değişince hemen biter)
     'FOUNDING': True,  # kural 9: kuruluş sürüyor; False olunca admin'den konu eklenemez, rol ve yönetici salt okunur
 }

@@ -2,10 +2,9 @@ from operator import attrgetter
 
 from django import template
 from django.conf import settings
-from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 
-from ..models import PANEL_CACHE_KEY, Vote, active_proposals, required_quorum
+from ..models import PANEL_CACHE_KEY, active_proposals, mark_voted, required_quorum
 
 register = template.Library()
 
@@ -24,12 +23,5 @@ def active_panel(context):
     önbellek kopya döndürdüğü için kişiye özel "Oy ver" rozeti ona sızmaz.
     """
     voting, talk, total, quorum = cache.get_or_set(PANEL_CACHE_KEY, _panel, settings.FORUM['PANEL_CACHE_SECONDS'])
-    user = context['request'].user
-    if voting and user.is_authenticated and user.can_vote:
-        # "Oy ver": oy verilmemiş öneri, 1 sorgu. Açık öneriye verilen oy, önerinin açılışından sonradır; kullanıcının
-        # en eski açık öneriden sonraki oyları yeter. Tipler ayrı tablolarda: eşleşme (content_type, object_id).
-        mine = set(Vote.objects.filter(voter=user, voted_at__gte=min(p.created_at for p in voting))
-                   .values_list('content_type_id', 'object_id'))
-        for p in voting:
-            p.voted = (ContentType.objects.get_for_model(p).pk, p.pk) in mine
+    mark_voted(voting, context['request'].user)
     return {'voting': voting, 'talk': talk, 'total': total, 'quorum': quorum, 'more': total > len(voting) + len(talk)}

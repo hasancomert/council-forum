@@ -39,8 +39,8 @@ def with_pending(qs, parent=True):
 SORT_LABELS = {'popular': 'En popüler', 'votes': 'En çok oy', 'new': 'En yeni'}
 
 
-def home(request):
-    g = request.GET
+def listing(g):
+    """Ana sayfanın konu listesi (site ve API): g = request.GET (tab, sort, page, parent)."""
     qs, parent = Topic.objects.visible(), None
     if g.get('parent', '').isdigit():  # ?parent=<pk>: yalnızca o konunun alt konuları (konu sayfasındaki bağlantılar)
         parent = get_object_or_404(Topic.objects.visible(), pk=g['parent'])
@@ -52,12 +52,16 @@ def home(request):
     qs = with_pending(qs.filter(where).select_related('parent').ranked(sort))
     if tab == 'main':
         qs = qs.annotate(n_sub=count_of(Topic, parent=OuterRef('pk'), is_deleted=False, is_hidden=False))
-    return render(request, 'topics/home.html', {
+    return {
         'page': Paginator(qs, settings.FORUM['TOPICS_PER_PAGE']).get_page(g.get('page')),  # geçersiz sayfa → ilk/son
         'tab': tab, 'sort': sort, 'parent': parent, 'tabs': tabs,
         # kapalı konu yorum ve oy almaz, "en popüler" orada anlamsız
         'sorts': {k: v for k, v in SORT_LABELS.items() if not (tab == 'closed' and k == 'popular')},
-    })
+    }
+
+
+def home(request):
+    return render(request, 'topics/home.html', listing(request.GET))
 
 
 def archive(request):
@@ -70,11 +74,11 @@ def archive(request):
     return render(request, 'topics/archive.html', {'page': page, 'title': 'Silinen konular'})
 
 
-def detail(request, pk):
-    topic = get_object_or_404(with_pending(Topic.objects.existing().select_related('parent')), pk=pk)  # silinmiş 404
-    user = request.user
+def page_data(pk, user):
+    """Konu sayfasının verisi (site ve API). Silinmiş konu 404; gizli konunun sayfası açılır, metni maskelenir."""
+    topic = get_object_or_404(with_pending(Topic.objects.existing().select_related('parent', 'author')), pk=pk)
     masked = topic.hidden_from(user)  # metni yalnızca sahibi ve yöneticiler görür
-    context = {
+    data = {
         'topic': topic, 'masked': masked, 'title': 'Moderasyonla gizlendi' if masked else topic.title,
         # ▲/▼ hep görünür; verilemiyorsa düğmeler soluk ve nedeni yazar
         'vote_why': vote_block(user) or ('Kendi konuna oy verilmez' if topic.author_id == user.pk
@@ -85,10 +89,14 @@ def detail(request, pk):
     }
     if not topic.parent_id:  # ana konu: ilk TOPICS_PER_PAGE açık alt konu; gerisi ana sayfada ?parent= ile
         subs, open_q, closed_q = topic.children.visible(), TABS['sub'][1], TABS['closed'][1]
-        context['n_subs'] = subs.aggregate(open=Count('pk', filter=open_q), closed=Count('pk', filter=closed_q))
+        data['n_subs'] = subs.aggregate(open=Count('pk', filter=open_q), closed=Count('pk', filter=closed_q))
         subs = with_pending(subs.filter(open_q).ranked('popular'), parent=False)  # üst konunun rozeti başlıkta
-        context['subs'] = subs[:settings.FORUM['TOPICS_PER_PAGE']]
-    return render(request, 'topics/detail.html', context)
+        data['subs'] = subs[:settings.FORUM['TOPICS_PER_PAGE']]
+    return data
+
+
+def detail(request, pk):
+    return render(request, 'topics/detail.html', page_data(pk, request.user))
 
 
 @login_required

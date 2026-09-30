@@ -68,17 +68,26 @@ def queue(request):
     return render(request, 'moderation/queue.html', {'page': page, 'items': items, 'title': 'Şikayetler'})
 
 
+def file_report(user, target):
+    """Şikayet (site ve API): mesajı döndürür. Şikayet edilemeyen içerikte PermissionDenied, hız sınırında ValueError."""
+    if not target.can_be_reported_by(user):
+        raise PermissionDenied
+    if over_limit(Report.objects.filter(reporter=user), 'REPORT_RATE'):
+        raise ValueError('Çok sık şikayet ediyorsun, biraz bekle.')
+    # içerik başına tek şikayet (veritabanında da UniqueConstraint)
+    _, created = Report.objects.get_or_create(content_type=ContentType.objects.get_for_model(target),
+                                              object_id=target.pk, reporter=user)
+    return 'Şikayetin yöneticilere iletildi.' if created else 'Bunu zaten şikayet ettin.'
+
+
 @login_required
 @require_POST
 def report(request, ct, pk):
     target = get_target(ct, pk, Hideable)
-    if not target.can_be_reported_by(request.user):
-        raise PermissionDenied
-    if over_limit(Report.objects.filter(reporter=request.user), 'REPORT_RATE'):
-        messages.error(request, 'Çok sık şikayet ediyorsun, biraz bekle.')
-    else:  # içerik başına tek şikayet (veritabanında da UniqueConstraint)
-        _, created = Report.objects.get_or_create(content_type_id=ct, object_id=target.pk, reporter=request.user)
-        messages.success(request, 'Şikayetin yöneticilere iletildi.' if created else 'Bunu zaten şikayet ettin.')
+    try:
+        messages.success(request, file_report(request.user, target))
+    except ValueError as e:
+        messages.error(request, str(e))
     path, _, anchor = target.get_absolute_url().partition('#')  # yorumda #c<pk>
     return redirect(back(request, path) + (f'#{anchor}' if anchor else ''))
 

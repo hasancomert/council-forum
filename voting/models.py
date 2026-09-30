@@ -484,6 +484,17 @@ def active_proposals():
             for p in model.objects.filter(**open_now).select_related().annotate(participants=Count('votes'))]
 
 
+def mark_voted(proposals, user):
+    """"Oy ver" rozeti: oy hakkı olan kullanıcıda p.voted (True/False), 1 sorgu (panel ve API). Açık öneriye verilen
+    oy önerinin açılışından sonradır; en eski öneriden sonraki oylar yeter. Eşleşme (content_type, object_id).
+    """
+    if proposals and user.is_authenticated and user.can_vote:
+        mine = set(Vote.objects.filter(voter=user, voted_at__gte=min(p.created_at for p in proposals))
+                   .values_list('content_type_id', 'object_id'))
+        for p in proposals:
+            p.voted = (ContentType.objects.get_for_model(p).pk, p.pk) in mine
+
+
 def open_proposal_count(user):
     """Kural 8: kişi başı en fazla 3 açık öneri, tüm tipler toplanarak sayılır."""
     return sum(model.objects.filter(proposer=user, status=BaseProposal.Status.VOTING).count() for model in PROPOSAL_MODELS)

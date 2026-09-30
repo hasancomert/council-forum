@@ -26,6 +26,7 @@ urlpatterns = [
     path('', include('comments.urls')),
     path('', include('moderation.urls')),
     path('accounts/', include('accounts.urls')),
+    path('api/', include('api.urls')),  # mobil uygulama (JSON)
     path('admin/', admin.site.urls),
     # PWA: service worker kökten sunulur ki kapsamı bütün site olsun (/static/ altından yalnızca /static/'i kapsardı)
     path('sw.js', page('pwa/sw.js', content_type='text/javascript'), name='sw'),
