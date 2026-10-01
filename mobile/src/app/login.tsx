@@ -1,8 +1,8 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput } from 'react-native';
+import { ScrollView, Text, TextInput } from 'react-native';
 
-import { Button, Notice, Row } from '@/components/ui';
+import { Button, KeyboardArea, keyboardScroll, Notice, Row } from '@/components/ui';
 import { errorText, openSite, SERVER } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { size, themed, useColors } from '@/lib/theme';
@@ -30,8 +30,8 @@ export default function Login() {
   };
 
   return (
-    <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={s.card} keyboardShouldPersistTaps="handled">
+    <KeyboardArea>
+      <ScrollView contentContainerStyle={s.card} {...keyboardScroll}>
         {error ? <Notice tone="error">{error}</Notice> : null}
         <Text style={s.label}>Takma ad</Text>
         <TextInput
@@ -63,12 +63,11 @@ export default function Login() {
         </Row>
         <Text style={s.small}>Kayıt ve şifre işlemleri sitede açılır. Sunucu: {SERVER}</Text>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardArea>
   );
 }
 
 const useStyles = themed((c) => ({
-  fill: { flex: 1 },
   card: { padding: size.s4, gap: size.s2 },
   label: { color: c.text, fontSize: 15, fontWeight: '600', marginTop: size.s2 },
   input: {

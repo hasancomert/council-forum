@@ -1,6 +1,17 @@
 // Ortak arayüz parçaları; görünüm static/css/site.css'teki sınıflarla aynı (.button, .primary, .chip, .badge, .notice).
-import { useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, Text, View, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import {
+  ActivityIndicator,
+  Dimensions,
+  Keyboard,
+  Platform,
+  Pressable,
+  Text,
+  View,
+  type StyleProp,
+  type ViewProps,
+  type ViewStyle,
+} from 'react-native';
 
 import { errorText } from '@/lib/api';
 import { size, themed, useColors } from '@/lib/theme';
@@ -115,6 +126,32 @@ export function ConfirmBox({ text, action, run }: { text: string; action: string
     </Row>
   );
 }
+
+/** Yazı kutusu olan kaydırmalı ekranın sarmalayıcısı: klavye açılınca odaktaki kutu klavyenin hemen üstüne kayar,
+ *  içerik klavye açıkken de kaydırılır. Android'de uygulama ekranın tamamına çizildiği (edge-to-edge) için ekran
+ *  klavyeyle küçülmez: alta klavye kadar boşluk konur, kaydırma alanı küçülür ve Android odaktaki kutuyu kendisi
+ *  görünür alana kaydırır (ScrollView.onSizeChanged). iOS'ta bu işi kaydırma alanının
+ *  automaticallyAdjustKeyboardInsets'i yapar ({...keyboardScroll}). */
+export function KeyboardArea({ children }: { children: ReactNode }) {
+  const [bottom, setBottom] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const show = Keyboard.addListener('keyboardDidShow', (e) =>
+      // ekranın altından klavyenin üst kenarına (endCoordinates.height gezinme çubuğunu saymaz)
+      setBottom(Math.max(0, Dimensions.get('screen').height - e.endCoordinates.screenY)),
+    );
+    const hide = Keyboard.addListener('keyboardDidHide', () => setBottom(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return <View style={{ flex: 1, paddingBottom: bottom }}>{children}</View>;
+}
+
+/** KeyboardArea içindeki kaydırma alanına (ScrollView, FlatList): iOS'ta klavye kadar alt boşluk ve odaktaki kutuyu
+ *  klavyenin üstüne kaydırma; dokunuş klavyeyi kapatmadan düğmeye gider. */
+export const keyboardScroll = { automaticallyAdjustKeyboardInsets: true, keyboardShouldPersistTaps: 'handled' } as const;
 
 export function Row({ children, style, ...rest }: ViewProps) {
   return (

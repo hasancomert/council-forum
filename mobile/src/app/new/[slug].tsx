@@ -1,8 +1,8 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from 'react-native';
+import { ScrollView, Text, TextInput, View } from 'react-native';
 
-import { Button, Notice, Row, Status } from '@/components/ui';
+import { Button, KeyboardArea, keyboardScroll, Notice, Row, Status } from '@/components/ui';
 import { api, ApiError, errorText, type Field, type ProposalForm } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { size, themed, useColors } from '@/lib/theme';
@@ -86,8 +86,8 @@ export default function NewProposal() {
 
   if (!form) return <Status error={error} onRetry={load} />;
   return (
-    <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
-      <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
+    <KeyboardArea>
+      <ScrollView contentContainerStyle={s.page} {...keyboardScroll}>
         <Stack.Screen options={{ title: form.title }} />
         {form.target && (
           <Text style={s.text}>
@@ -107,12 +107,11 @@ export default function NewProposal() {
         <Text style={s.help}>Öneri açılınca oylamaya girer; sonuç süre bitince açıklanır.</Text>
         <Button kind="primary" title={busy ? 'Açılıyor…' : 'Öneriyi aç'} onPress={submit} disabled={busy} style={s.start} />
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardArea>
   );
 }
 
 const useStyles = themed((c) => ({
-  fill: { flex: 1 },
   page: { padding: size.s4, gap: size.s3, paddingBottom: size.s4 * 3 },
   text: { color: c.text, fontSize: 16 },
   strong: { fontWeight: '700' },

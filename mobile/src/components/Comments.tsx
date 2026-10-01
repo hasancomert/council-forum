@@ -2,7 +2,7 @@
 // sonra yorum formu ve ana yorumlar, yanıtları altlarında. Kaydırdıkça sonraki sayfa gelir.
 import { router } from 'expo-router';
 import { useState, type ReactElement } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, RefreshControl, Text, TextInput, View } from 'react-native';
+import { FlatList, RefreshControl, Text, TextInput, View } from 'react-native';
 
 import { api, errorText, openSite, type Comment, type CommentPage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -10,7 +10,7 @@ import { usePaged } from '@/lib/paged';
 import { size, themed, useColors } from '@/lib/theme';
 
 import { ReportBox, VoteButtons } from './Vote';
-import { Badge, Button, ConfirmBox, Notice, Row, Status } from './ui';
+import { Badge, Button, ConfirmBox, KeyboardArea, keyboardScroll, Notice, Row, Status } from './ui';
 
 type Target = { ct: number; pk: number }; // yorumların bağlı olduğu konu ya da öneri
 
@@ -35,20 +35,24 @@ function CommentForm({ target, parent, onDone }: { target: Target; parent?: numb
     }
   };
 
+  // Düğme kutunun sağında, alt kenarı hizalı: kutu klavyenin üstüne kayınca düğme de görünür. Kutu tek satırla
+  // başlar, yazdıkça büyür (en fazla maxHeight, sonra kendi içinde kayar).
   return (
     <View style={s.form}>
       {error ? <Notice tone="error">{error}</Notice> : null}
-      <TextInput
-        style={s.input}
-        value={body}
-        onChangeText={setBody}
-        multiline
-        placeholder={parent ? 'Yanıtın' : 'Yorumun'}
-        placeholderTextColor={c.muted}
-        accessibilityLabel={parent ? 'Yanıt' : 'Yorum'}
-        autoFocus={!!parent}
-      />
-      <Button kind="primary" title={parent ? 'Yanıtla' : 'Yorum yaz'} onPress={send} disabled={busy || !body.trim()} />
+      <View style={s.composer}>
+        <TextInput
+          style={s.input}
+          value={body}
+          onChangeText={setBody}
+          multiline
+          placeholder={parent ? 'Yanıtın' : 'Yorumun'}
+          placeholderTextColor={c.muted}
+          accessibilityLabel={parent ? 'Yanıt' : 'Yorum'}
+          autoFocus={!!parent}
+        />
+        <Button kind="primary" title={parent ? 'Yanıtla' : 'Yorum yaz'} onPress={send} disabled={busy || !body.trim()} />
+      </View>
     </View>
   );
 }
@@ -149,7 +153,7 @@ export function CommentThread({ target, header, onRefresh }: { target: Target; h
   );
 
   return (
-    <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
+    <KeyboardArea>
       <FlatList
         data={list.items}
         keyExtractor={(item) => String(item.pk)}
@@ -158,7 +162,7 @@ export function CommentThread({ target, header, onRefresh }: { target: Target; h
         }
         onEndReached={list.more}
         onEndReachedThreshold={0.5}
-        keyboardShouldPersistTaps="handled"
+        {...keyboardScroll}
         contentContainerStyle={s.content}
         refreshControl={
           <RefreshControl
@@ -187,22 +191,24 @@ export function CommentThread({ target, header, onRefresh }: { target: Target; h
         ListEmptyComponent={list.busy || list.error ? <Status error={list.error} onRetry={list.reload} /> : null}
         ListFooterComponent={list.items.length > 0 && list.busy ? <Status /> : null}
       />
-    </KeyboardAvoidingView>
+    </KeyboardArea>
   );
 }
 
 const useStyles = themed((c) => ({
-  fill: { flex: 1 },
   content: { padding: size.s3, paddingBottom: size.s4 * 3 },
   h2: { color: c.text, fontSize: size.lg, fontWeight: '700', marginTop: size.s4, marginBottom: size.s2 },
   meta: { color: c.muted, fontSize: size.sm },
   start: { alignSelf: 'flex-start' },
   sorts: { marginTop: size.s3, marginBottom: size.s1 },
-  form: { gap: size.s2, marginVertical: size.s2, alignItems: 'flex-start' },
+  form: { gap: size.s2, marginVertical: size.s2 },
+  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: size.s2 },
   input: {
-    alignSelf: 'stretch',
-    minHeight: 88,
-    padding: 10,
+    flex: 1,
+    minHeight: size.control + 4,
+    maxHeight: 160,
+    paddingHorizontal: 11,
+    paddingVertical: 10,
     borderWidth: 1,
     borderColor: c.muted,
     borderRadius: size.radius,
