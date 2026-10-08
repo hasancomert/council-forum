@@ -1,11 +1,13 @@
 from django.conf import settings
 from django.contrib import admin
 
+from config.utils import PrivateLookups
+
 from .models import Topic
 
 
 @admin.register(Topic)
-class TopicAdmin(admin.ModelAdmin):
+class TopicAdmin(PrivateLookups, admin.ModelAdmin):
     # Puan herkese açık; kimin ne verdiği gizli kalsın diye TopicVote admin'e kaydedilmez.
     list_display = ('title', 'parent', 'author', 'created_at', 'score', 'is_closed', 'is_deleted')
     list_filter = ('is_closed', 'is_deleted')

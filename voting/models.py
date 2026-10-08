@@ -1,10 +1,11 @@
 import math
 from datetime import timedelta
+from operator import attrgetter
 
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.db import models, transaction
 from django.db.models import Count, Q, Sum
 from django.urls import reverse
@@ -12,6 +13,7 @@ from django.utils import timezone
 
 from accounts.models import User
 from comments.models import Comment, Commentable
+from config.errors import RuleError
 from moderation.models import Hideable
 from topics.models import Topic
 
@@ -41,17 +43,18 @@ class Vote(models.Model):
         ]
 
     def __str__(self):
-        return f'{self.voter} -> {self.proposal}: {self.choice}'
+        # Kural 6: kim ne oy verdi hiçbir yerde görünmesin (Django'nun silme onay sayfası da bunu yazar).
+        return f'oy #{self.pk}'
 
     @classmethod
     def cast(cls, *, proposal, voter, choice):
         """Oy ver/değiştir (upsert). Kural 1 ve 6'daki oy hakkı ve süre denetimini burada yapar."""
         if choice not in cls.Choice.values:
-            raise ValueError('Geçersiz oy.')
+            raise RuleError('Geçersiz oy.')
         if not proposal.accepts_votes():
-            raise ValueError('Bu öneri şu anda oylanamıyor.')
+            raise RuleError('Bu öneri şu anda oylanamıyor.')
         if not voter.can_vote:
-            raise ValueError('Bu kullanıcının oy hakkı yok.')
+            raise RuleError('Bu kullanıcının oy hakkı yok.')
         weight = voter.vote_weight if proposal.WEIGHTED else 1
         vote, _ = cls.objects.update_or_create(
             content_type=ContentType.objects.get_for_model(proposal), object_id=proposal.pk, voter=voter,
@@ -60,9 +63,28 @@ class Vote(models.Model):
         return vote
 
 
+PROPOSALS = {}  # Registry: URL'deki tip adı (SLUG) → öneri modeli. Tipler tanımlanırken kendini kaydeder.
+
+
+class ProposalQuerySet(models.QuerySet):
+    """Önerilerin ortak sorguları (Repository): "süren" ve "vadesi gelen" tanımı tek yerde."""
+
+    def running(self):
+        """Oylaması (istekte tartışması) süren öneriler: kural 8'deki açık öneri, panel, rozetler."""
+        return self.filter(status=BaseProposal.Status.VOTING, voting_ends_at__gt=timezone.now())
+
+    def due(self):
+        """Sonuçlanacaklar: süresi dolmuş ama sonuçlanmamış, ya da kabul edilip uygulanması yarıda kalmış."""
+        return self.filter(Q(status=BaseProposal.Status.VOTING, voting_ends_at__lte=timezone.now())
+                           | Q(status=BaseProposal.Status.ACCEPTED))
+
+
 class BaseProposal(Commentable, Hideable):
     """Ortak öneri iskeleti. Tip başına ayrı model kullanılıyor (Vote hariç), böylece her
     önerinin kendi hedef/payload alanları olur; oy/ağırlık/süre mantığı burada tekrar etmez.
+    Template Method: finalize() ve clean() akışı sabit; tipe göre değişen adımlar alt sınıfın kancaları
+    (check_target, prefill, _accepted, apply). Yeni tip yalnızca bir alt sınıftır (+ göç): kayıt, URL, form,
+    admin, panel, öneri sayfası, API ve konu sayfasındaki bağlantı kendiliğinden gelir.
     """
     class Status(models.TextChoices):
         VOTING = 'voting', 'Oylanıyor'
@@ -77,11 +99,12 @@ class BaseProposal(Commentable, Hideable):
 
     OWNER = 'proposer'
     in_discussion = False  # yalnızca istekte tartışma evresi var (RequestProposal property ile ezer)
-    SLUG = ''  # URL'deki tip adı; PROPOSALS sözlüğü modeli bununla bulur
-    TARGET = 'topic'  # formda URL'den gelen konunun yazılacağı alan (yoksa None)
+    SLUG = ''  # URL'deki tip adı; tanımlayan sınıf PROPOSALS'a kaydolur
+    TARGET = None  # formda URL'den gelen konunun yazılacağı alan (TopicProposal: 'topic', konu açma: 'parent')
+    LINK = ''  # konu sayfasındaki öneri bağlantısı (boşsa yok); MORE: "Diğer öneriler"in içinde
+    MORE = False
     FORM_FIELDS = ()  # öneri formunda kullanıcının doldurduğu alanlar
     WEIGHTED = True  # kural 2: yalnızca B statüsü oylamasında (ExpertProposal) False
-    VOTING_DAYS_SETTING = 'PROPOSAL_VOTING_DAYS'  # kural 5: RequestProposal kendi süresini hesaplar
     DUPLICATE_FIELDS = ()  # kural 8: "aynı öneri" bu alanların eşleşmesiyle belirlenir
 
     proposer = models.ForeignKey(
@@ -95,13 +118,22 @@ class BaseProposal(Commentable, Hideable):
 
     votes = GenericRelation(Vote, content_type_field='content_type', object_id_field='object_id')
 
+    objects = ProposalQuerySet.as_manager()
+
     class Meta:
         abstract = True
-        ordering = ['-created_at']
+
+    def __init_subclass__(cls, **kwargs):
+        # Kendini kaydeden Registry: SLUG'ı olan her somut tip PROPOSALS'a girer (soyut ara sınıfların SLUG'ı yok).
+        super().__init_subclass__(**kwargs)
+        if 'SLUG' in cls.__dict__:
+            if cls.SLUG in PROPOSALS:
+                raise ImproperlyConfigured(f'{cls.SLUG!r} öneri tipi zaten kayıtlı: {PROPOSALS[cls.SLUG].__name__}')
+            PROPOSALS[cls.SLUG] = cls
 
     def save(self, *args, **kwargs):
         if self._state.adding and not self.voting_ends_at:
-            self.voting_ends_at = timezone.now() + timedelta(days=settings.FORUM[self.VOTING_DAYS_SETTING])
+            self.voting_ends_at = timezone.now() + timedelta(days=settings.FORUM['PROPOSAL_VOTING_DAYS'])
         super().save(*args, **kwargs)
 
     def get_absolute_url(self):
@@ -113,8 +145,50 @@ class BaseProposal(Commentable, Hideable):
 
     @property
     def deadline(self):
-        """İçinde bulunulan evrenin bitişi: tartışmadaki istekte oylamanın başlangıcı."""
-        return self.discussion_ends_at if self.in_discussion else self.voting_ends_at
+        """İçinde bulunulan evrenin bitişi (istekte tartışma sürerken oylamanın başlangıcı: RequestProposal ezer)."""
+        return self.voting_ends_at
+
+    @property
+    def target(self):
+        """URL'den gelen hedef konu (TARGET alanı); yoksa None."""
+        return getattr(self, self.TARGET) if self.TARGET else None
+
+    @property
+    def target_label(self):
+        return self._meta.get_field(self.TARGET).verbose_name if self.TARGET else ''
+
+    def details(self):
+        """Önerinin kendi alanları [(etiket, değer)]: başlık, açıklama, işlem, üye, gerekçe… Öneri sayfası ve API
+        aynı listeyi gösterir, yeni tipin alanları kendiliğinden görünür. Ortak alanlar, hedef, tarihler ve boşlar hariç.
+        """
+        common = {f.name for f in BaseProposal._meta.fields} | {'id', self.TARGET}
+        out = []
+        for f in self._meta.concrete_fields:
+            if f.name not in common and not isinstance(f, models.DateTimeField):
+                value = getattr(self, f'get_{f.name}_display')() if f.choices else getattr(self, f.name)
+                if value:
+                    out.append((f.verbose_name, str(value)))
+        return out
+
+    @classmethod
+    def targets(cls):
+        """URL'deki konunun arandığı küme: öneri yalnızca görünür konuya açılır (gizli içerik forma dolmasın)."""
+        return Topic.objects.visible()
+
+    @classmethod
+    def offered_for(cls, topic):
+        """Konu sayfasında bu tipin bağlantısı çıksın mı: tipin kendi hedef denetimi (check_target) boş bir öneriyle
+        denenir; kural ikinci kez yazılmaz.
+        """
+        if not (cls.LINK and cls.TARGET):
+            return False
+        proposal = cls(**{cls.TARGET: topic})
+        proposal.prefill()
+        try:
+            proposal.check_target()
+        except ValidationError:
+            return False
+        return True
 
     @property
     def is_open(self):
@@ -185,12 +259,11 @@ class BaseProposal(Commentable, Hideable):
         if not self._state.adding:
             return
         forum = settings.FORUM
-        if self.proposer_id:  # admin'de öneren kayıttan hemen önce yazılır
-            if not self.proposer.can_vote:
-                age = f"Öneri açmak için hesabın en az {forum['MIN_ACCOUNT_AGE_DAYS']} günlük olmalı."
-                raise ValidationError('Engelin sürerken öneri açamazsın.' if self.proposer.is_banned else age)
-            if open_proposal_count(self.proposer) >= forum['MAX_OPEN_PROPOSALS']:
-                raise ValidationError(f"Aynı anda en fazla {forum['MAX_OPEN_PROPOSALS']} açık önerin olabilir.")
+        if not self.proposer.can_vote:  # öneren formdan önce yazılır (voting.views.new_form)
+            age = f"Öneri açmak için hesabın en az {forum['MIN_ACCOUNT_AGE_DAYS']} günlük olmalı."
+            raise ValidationError('Engelin sürerken öneri açamazsın.' if self.proposer.is_banned else age)
+        if open_proposal_count(self.proposer) >= forum['MAX_OPEN_PROPOSALS']:
+            raise ValidationError(f"Aynı anda en fazla {forum['MAX_OPEN_PROPOSALS']} açık önerin olabilir.")
         self.check_target()
         if self.is_duplicate():
             raise ValidationError(
@@ -200,9 +273,8 @@ class BaseProposal(Commentable, Hideable):
         """Öneri formunun başlangıç değerleri; hedef atandıktan sonra çağrılır."""
 
     def check_target(self):
-        """Tipe göre ek denetim. Varsayılan (düzenleme, kapatma, silme, istek): kural 7."""
-        if self.topic_id and not self.topic.is_open:
-            raise ValidationError('Kapalı, silinmiş ya da gizlenmiş konu yeni öneri almaz.')
+        """Tipe göre hedef denetimi: hedef bu öneriyi alamıyorsa ValidationError (konu sayfasındaki bağlantılar da
+        buna bakar: offered_for)."""
 
     def is_duplicate(self):
         """Kural 8: aynısı oylamada mı, ya da reddedilmesinin üzerinden bekleme süresi geçmedi mi.
@@ -215,10 +287,27 @@ class BaseProposal(Commentable, Hideable):
         ).exists()
 
 
+class TopicProposal(BaseProposal):
+    """Var olan bir konuya yönelik öneriler: düzenleme, kapatma, silme, geri alma, istek. Konu alanı ve denetimi
+    yalnızca bunlarda (ISP): konu açma önerisinin üst konusu isteğe bağlı, bilirkişilik önerisinin konusu yok.
+    """
+    TARGET = 'topic'
+
+    topic = models.ForeignKey(Topic, models.PROTECT, verbose_name='konu')
+
+    class Meta:
+        abstract = True
+
+    def check_target(self):
+        if not self.topic.is_open:  # kural 7
+            raise ValidationError('Kapalı, silinmiş ya da gizlenmiş konu yeni öneri almaz.')
+
+
 class TopicOpenProposal(BaseProposal):
     # parent boşsa yeni ana konu önerisi (kural 9: kuruluştan sonra bu da oylamayla).
     SLUG = 'open'
     TARGET = 'parent'  # isteğe bağlı: boşsa ana konu önerisi
+    LINK = 'Alt konu öner'
     FORM_FIELDS = ('title', 'description')
 
     parent = models.ForeignKey(
@@ -250,11 +339,11 @@ class TopicOpenProposal(BaseProposal):
         return True
 
 
-class TopicEditProposal(BaseProposal):
+class TopicEditProposal(TopicProposal):
     SLUG = 'edit'
+    LINK, MORE = 'Düzenleme öner', True
     FORM_FIELDS = ('new_title', 'new_description')
 
-    topic = models.ForeignKey(Topic, models.PROTECT, verbose_name='konu')
     new_title = models.CharField('yeni başlık', max_length=200)
     new_description = models.TextField('yeni açıklama', blank=True)
 
@@ -273,16 +362,13 @@ class TopicEditProposal(BaseProposal):
     def apply(self):
         if not self.topic.is_open:
             return False  # oylama sürerken konu kapandı ya da silindi
-        self.topic.title = self.new_title
-        self.topic.description = self.new_description
-        self.topic.save(update_fields=['title', 'description'])
+        self.topic.change(title=self.new_title, description=self.new_description)
         return True
 
 
-class TopicCloseProposal(BaseProposal):
+class TopicCloseProposal(TopicProposal):
     SLUG = 'close'
-
-    topic = models.ForeignKey(Topic, models.PROTECT, verbose_name='konu')
+    LINK, MORE = 'Kapatma öner', True
 
     DUPLICATE_FIELDS = ('topic_id',)
 
@@ -296,16 +382,13 @@ class TopicCloseProposal(BaseProposal):
     def apply(self):
         if self.topic.is_deleted:
             return False  # silinmiş konu kapatılamaz
-        if not self.topic.is_closed:
-            self.topic.is_closed = True
-            self.topic.save(update_fields=['is_closed'])
+        self.topic.change(is_closed=True)
         return True
 
 
-class TopicDeleteProposal(BaseProposal):
+class TopicDeleteProposal(TopicProposal):
     SLUG = 'delete'
-
-    topic = models.ForeignKey(Topic, models.PROTECT, verbose_name='konu')
+    LINK, MORE = 'Silme öner', True
 
     DUPLICATE_FIELDS = ('topic_id',)
 
@@ -317,21 +400,19 @@ class TopicDeleteProposal(BaseProposal):
         return f'Sil: {self.topic}'
 
     def apply(self):
-        if not self.topic.is_deleted:
-            self.topic.is_deleted = True
-            self.topic.save(update_fields=['is_deleted'])
+        self.topic.change(is_deleted=True)
         return True
 
 
-class TopicUndoProposal(BaseProposal):
+class TopicUndoProposal(TopicProposal):
     class Action(models.TextChoices):
         REOPEN = 'reopen', 'Kapatmayı geri al'
         RESTORE = 'restore', 'Silmeyi geri al'
 
     SLUG = 'undo'
+    LINK = 'Yeniden açmayı öner'  # konu sayfası yalnızca kapalı konuda; silineni arşiv sayfası geri getirir
     FORM_FIELDS = ('action',)
 
-    topic = models.ForeignKey(Topic, models.PROTECT, verbose_name='konu')
     action = models.CharField('işlem', max_length=10, choices=Action)
 
     DUPLICATE_FIELDS = ('topic_id', 'action')
@@ -343,25 +424,21 @@ class TopicUndoProposal(BaseProposal):
     def __str__(self):
         return f'{self.get_action_display()}: {self.topic}'
 
+    @classmethod
+    def targets(cls):
+        return Topic.objects.unhidden()  # kapalı ve silinmiş konu da; gizlenmiş olanı yalnızca yönetici açar
+
     def prefill(self):
         self.action = self.Action.RESTORE if self.topic.is_deleted else self.Action.REOPEN
 
     def check_target(self):
-        if not self.topic_id:
-            return
-        if self.topic.is_hidden:
+        if not self.topic.is_unhidden:  # üst konusu gizli olan da (gizli ana konunun alt konuları donar)
             raise ValidationError('Gizlenmiş konu öneri almaz.')  # moderasyon yalnızca yöneticiyle geri alınır
         if not (self.topic.is_closed if self.action == self.Action.REOPEN else self.topic.is_deleted):
             raise ValidationError('Bu konuda geri alınacak bir kapatma ya da silme yok.')
 
     def apply(self):
-        if self.action == self.Action.REOPEN:
-            if self.topic.is_closed:
-                self.topic.is_closed = False
-                self.topic.save(update_fields=['is_closed'])
-        elif self.topic.is_deleted:
-            self.topic.is_deleted = False
-            self.topic.save(update_fields=['is_deleted'])
+        self.topic.change(**{'is_closed' if self.action == self.Action.REOPEN else 'is_deleted': False})
         return True
 
 
@@ -393,7 +470,7 @@ class ExpertProposal(BaseProposal):
         if not self.target_user_id:
             return
         if self.action == self.Action.GRANT:
-            if self.proposer_id and self.target_user_id != self.proposer_id:
+            if self.target_user_id != self.proposer_id:
                 raise ValidationError('B statüsü başvurusu yalnızca kendi adına yapılır.')  # kural 2: "başvuru"
             if self.target_user.role != User.Role.MEMBER:
                 raise ValidationError('Bu üye zaten bilirkişi.')
@@ -402,8 +479,9 @@ class ExpertProposal(BaseProposal):
 
     def _accepted(self, t):
         # kural 2: 2/3 evet. Ağırlık hep 1, yani count oy sayısıdır; ondalık hatası olmasın diye çapraz çarpım.
+        # Oy yoksa ret (0 >= 0 kabul sayılmasın; yeter sayı en az 1 olsa da).
         num, den = settings.FORUM['EXPERT_APPROVAL_NUM'], settings.FORUM['EXPERT_APPROVAL_DEN']
-        return t['yes'] * den >= t['count'] * num
+        return t['count'] > 0 and t['yes'] * den >= t['count'] * num
 
     def apply(self):
         new_role = User.Role.EXPERT if self.action == self.Action.GRANT else User.Role.MEMBER
@@ -413,11 +491,12 @@ class ExpertProposal(BaseProposal):
         return True
 
 
-class RequestProposal(BaseProposal):
+class RequestProposal(TopicProposal):
     """Kural 5: konudan doğan istek, 3 gün tartışma + 3 gün oylama. Uygulanacak bir sistem
     işlemi yok; kabul edilmesi başlı başına sonuçtur (apply() hemen True döner).
     """
     SLUG = 'request'
+    LINK = 'İstek aç'
     FORM_FIELDS = ('title', 'content')
 
     topic = models.ForeignKey(Topic, models.PROTECT, related_name='requests', verbose_name='ilgili konu')
@@ -435,14 +514,21 @@ class RequestProposal(BaseProposal):
         return self.title
 
     def save(self, *args, **kwargs):
-        if self._state.adding and not self.discussion_ends_at:
-            self.discussion_ends_at = timezone.now() + timedelta(days=settings.FORUM['REQUEST_DISCUSSION_DAYS'])
-            self.voting_ends_at = self.discussion_ends_at + timedelta(days=settings.FORUM['REQUEST_VOTING_DAYS'])
+        if self._state.adding:  # verilen tarihler korunur (taban sınıftaki gibi)
+            forum = settings.FORUM
+            if not self.discussion_ends_at:
+                self.discussion_ends_at = timezone.now() + timedelta(days=forum['REQUEST_DISCUSSION_DAYS'])
+            if not self.voting_ends_at:
+                self.voting_ends_at = self.discussion_ends_at + timedelta(days=forum['REQUEST_VOTING_DAYS'])
         super().save(*args, **kwargs)
 
     @property
     def in_discussion(self):
         return timezone.now() < self.discussion_ends_at
+
+    @property
+    def deadline(self):
+        return self.discussion_ends_at if self.in_discussion else self.voting_ends_at
 
     def accepts_votes(self):
         return self.is_open and not self.in_discussion
@@ -451,37 +537,35 @@ class RequestProposal(BaseProposal):
         return True
 
 
-PROPOSAL_MODELS = (
-    TopicOpenProposal, TopicEditProposal, TopicCloseProposal, TopicDeleteProposal,
-    TopicUndoProposal, ExpertProposal, RequestProposal,
-)
-PROPOSALS = {model.SLUG: model for model in PROPOSAL_MODELS}
-
-
-PANEL_CACHE_KEY = 'active_panel:2'  # panelin ortak kısmı; moderasyon temizler. Biçimi değişince sürüm artar:
-# önbellek veritabanında, güncellemeden sonra eski biçimli kayıt okunmasın
+PROPOSAL_MODELS = tuple(PROPOSALS.values())  # tanım sırasıyla: konu sayfasındaki bağlantıların sırası da bu
 
 
 def withdraw_running(user):
-    """Hesap kapatma (sahte hesap): süren oylamalardaki oyları silinir, süren önerileri iptal olur.
+    """Hesap kapatma ve silme: süren oylamalardaki karar oyları silinir, süren önerileri iptal olur.
     Bitmiş oylamalara dokunulmaz; sonuçları kesinleşmiştir. Tip başına 2 sorgu.
     """
-    now = timezone.now()
     for model in PROPOSAL_MODELS:
-        running = model.objects.filter(status=BaseProposal.Status.VOTING, voting_ends_at__gt=now)
+        running = model.objects.running()
         Vote.objects.filter(voter=user, content_type=ContentType.objects.get_for_model(model),
                             object_id__in=running.values('pk')).delete()
         running.filter(proposer=user).update(status=BaseProposal.Status.CANCELLED)
 
 
 def active_proposals():
-    """Oylaması (istekte tartışması) süren tüm öneriler, participants = katılım sayısı; tip başına 1 sorgu.
-    Açık öneriler sayfası ve ana sayfa paneli kullanır.
+    """Oylaması (istekte tartışması) süren öneriler, evresinin bitişi yakın önce; participants = katılım sayısı.
+    Panel, açık öneriler sayfası ve API kullanır; tip başına 1 sorgu. Süresi dolup sonuçlanmamış öneriyi burada
+    sonuçlandırır (lazy kontrol): zamanlayıcının olmadığı yerel sunucuda da kural 5'teki süre işler.
     """
-    open_now = {'status': BaseProposal.Status.VOTING, 'voting_ends_at__gt': timezone.now()}
-    # select_related(): boş bırakınca null olamayan tüm FK'leri (topic, target_user) tek sorguda getirir.
-    return [p for model in PROPOSAL_MODELS
-            for p in model.objects.filter(**open_now).select_related().annotate(participants=Count('votes'))]
+    now, running = timezone.now(), []
+    for model in PROPOSAL_MODELS:
+        # select_related(): boş bırakınca null olamayan tüm FK'leri (topic, target_user) tek sorguda getirir.
+        for p in model.objects.filter(status=BaseProposal.Status.VOTING).select_related().annotate(
+                participants=Count('votes')):
+            if p.voting_ends_at > now:
+                running.append(p)
+            else:
+                p.finalize()
+    return sorted(running, key=attrgetter('deadline'))
 
 
 def mark_voted(proposals, user):
@@ -496,8 +580,8 @@ def mark_voted(proposals, user):
 
 
 def open_proposal_count(user):
-    """Kural 8: kişi başı en fazla 3 açık öneri, tüm tipler toplanarak sayılır."""
-    return sum(model.objects.filter(proposer=user, status=BaseProposal.Status.VOTING).count() for model in PROPOSAL_MODELS)
+    """Kural 8: kişi başı açık (oylaması süren) öneri sayısı, tüm tipler toplanarak; süresi dolan sayılmaz."""
+    return sum(model.objects.running().filter(proposer=user).count() for model in PROPOSAL_MODELS)
 
 
 def active_member_count():

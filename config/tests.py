@@ -1,13 +1,15 @@
 import os
+import re
 import subprocess
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.staticfiles import finders
 from django.core.exceptions import ImproperlyConfigured
+from django.core.management import call_command
 from django.core.management.utils import get_random_secret_key
 from django.template import Context, Template
 from django.template.loader import render_to_string
@@ -18,7 +20,8 @@ from accounts.models import User
 from topics.models import Topic
 
 from .settings import BASE_DIR, database, env_list, load_env
-from .templatetags import ago, left, span
+from .templatetags import ago, left, span, when
+from .utils import as_pk
 
 # Yayın ortamı: .env'deki geliştirme değerleri (DEBUG=1) bunları ezemez, gerçek ortam değişkeni önceliklidir.
 PROD = {'DEBUG': '0', 'SECRET_KEY': get_random_secret_key(), 'ALLOWED_HOSTS': 'forum.example',
@@ -122,3 +125,59 @@ class PwaTests(TestCase):
         self.assertContains(r, 'Bağlantı yok')
         self.assertNotContains(r, 'gizliad')
         self.assertNotIn('Cookie', r.get('Vary', ''))  # yanıt oturuma göre değişmiyor
+
+
+class SchemaTests(TestCase):
+    def test_models_match_migrations(self):
+        # max_length gibi değerler ayardan gelir (COMMENT_MAX_LENGTH, MOD_NOTE_MAX_LENGTH): değişip göç unutulursa
+        # SQLite'ta fark edilmez, PostgreSQL'de uzun metin 500 verir.
+        try:
+            call_command('makemigrations', '--check', '--dry-run', verbosity=0)
+        except SystemExit:
+            self.fail('Modeller göçlerle uyuşmuyor: python manage.py makemigrations')
+
+
+class UtilsTests(SimpleTestCase):
+    def test_as_pk_accepts_only_ascii_digits(self):
+        for value, pk in (('12', 12), (7, 7), ('0', 0), ('²', None), ('١٢', None), ('-1', None), ('1a', None),
+                          ('', None), (None, None)):
+            with self.subTest(value):
+                self.assertEqual(as_pk(value), pk)
+
+    def test_when_is_local_time_in_turkish(self):
+        self.assertEqual(when(datetime(2026, 10, 3, 21, 30, tzinfo=UTC)), '4 Ekim 2026 00:30')  # İstanbul UTC+3
+        self.assertEqual(when(datetime(2026, 10, 3, 21, 30, tzinfo=UTC), 'j F Y'), '4 Ekim 2026')
+        self.assertEqual(when(None), '')
+
+    def test_edges_of_durations(self):
+        now = timezone.now()
+        self.assertEqual((ago(None), left(None)), ('', ''))
+        self.assertEqual(left(now + timedelta(seconds=30)), "1 dk'dan az")
+        self.assertEqual(ago(now - timedelta(seconds=30)), 'az önce')
+
+
+class DesignTests(SimpleTestCase):
+    """İOG-4 (ANALIZ.md): metin/zemin çiftleri iki temada da en az 5,6:1 (WCAG AA'nın 4,5'inin üstü)."""
+    PAIRS = (('text', 'bg'), ('text', 'surface'), ('text', 'muted-soft'), ('text', 'accent-soft'), ('muted', 'bg'),
+             ('muted', 'surface'), ('muted', 'muted-soft'), ('accent', 'bg'), ('accent', 'surface'),
+             ('accent', 'accent-soft'), ('accent-strong', 'accent-soft'), ('accent-text', 'accent'),
+             ('accent-text', 'accent-strong'), ('danger', 'danger-soft'), ('danger', 'surface'), ('ok', 'ok-soft'),
+             ('ok', 'surface'))
+
+    @staticmethod
+    def luminance(color):
+        channels = [int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        r, g, b = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    def test_text_background_contrast(self):
+        css = (BASE_DIR / 'static/css/site.css').read_text(encoding='utf-8')
+        light_css, dark_css = css.split('@media (prefers-color-scheme: dark)', 1)
+        colors = re.compile(r'--([\w-]+):\s*(#[0-9a-f]{6})')
+        light = dict(colors.findall(light_css))
+        dark = light | dict(colors.findall(dark_css.split('\n}\n', 1)[0]))
+        for theme, palette in (('açık', light), ('koyu', dark)):
+            for fg, bg in self.PAIRS:
+                with self.subTest(theme=theme, pair=f'{fg}/{bg}'):
+                    hi, lo = sorted((self.luminance(palette[fg]), self.luminance(palette[bg])), reverse=True)
+                    self.assertGreaterEqual((hi + 0.05) / (lo + 0.05), 5.6)

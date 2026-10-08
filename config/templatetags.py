@@ -1,6 +1,7 @@
 from django import template
 from django.template.defaultfilters import stringfilter
 from django.utils import timezone
+from django.utils.formats import date_format
 
 register = template.Library()
 
@@ -40,6 +41,12 @@ def ago(value):
         return ''
     seconds = (timezone.now() - value).total_seconds()
     return 'az önce' if seconds < 60 else f'{span(seconds)} önce'
+
+
+@register.filter
+def when(value, fmt='j F Y H:i'):
+    """Sitenin tarih biçimi ('8 Ekim 2026 14:05'), yerel saatle; şablonlar ve API aynı biçimi kullanır."""
+    return date_format(timezone.localtime(value), fmt) if value else ''
 
 
 @register.filter

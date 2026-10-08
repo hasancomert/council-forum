@@ -6,7 +6,7 @@
   <li>Ad soyad: {{ user.first_name }} {{ user.last_name }} <small>(kimseye gösterilmez)</small></li>
   <li>E-posta: {{ user.email }} <small>(kimseye gösterilmez)</small></li>
   <li>Rol: {{ user.get_role_display }} · karar oylamalarında oy ağırlığın {{ user.vote_weight }}</li>
-  <li>Kayıt: {{ user.date_joined|date:"j F Y" }}{% if user.terms_accepted_at %} · şartları kabul: {{ user.terms_accepted_at|date:"j F Y H:i" }}{% endif %}</li>
+  <li>Kayıt: {{ user.date_joined|when:"j F Y" }}{% if user.terms_accepted_at %} · şartları kabul: {{ user.terms_accepted_at|when }}{% endif %}</li>
 </ul>
 <p class="links">
   <a href="{% url 'password_change' %}">Şifreni değiştir</a>

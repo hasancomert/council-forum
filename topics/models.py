@@ -19,7 +19,19 @@ def count_of(model, **filters):
                     output_field=IntegerField())
 
 
-SORTS = {'popular': ('-heat', '-created_at'), 'votes': ('-score', '-created_at'), 'new': ('-created_at',)}
+# sıralama: (etiket, ORDER BY); eşitlikte yeni önde, pk son ölçüt (aynı anda açılanlarda da sıra sabit, sayfalamada
+# tekrar/atlama olmaz). "En popüler"in heat'i ranked()'te hesaplanır.
+SORTS = {
+    'popular': ('En popüler', ('-heat', '-created_at', '-pk')),
+    'votes': ('En çok oy', ('-score', '-created_at', '-pk')),
+    'new': ('En yeni', ('-created_at', '-pk')),
+}
+
+# Süren kapatma/silme oylaması rozetleri: (topics.views.with_pending()'in eklediği alan, öneri tipi, etiket).
+# Alt konuda üst konununki de: alt konu onunla birlikte hemen kapanır.
+PENDING = (('closing', 'close', 'Kapatma oylamasında'), ('deleting', 'delete', 'Silme oylamasında'),
+           ('parent_closing', 'close', 'Üst konu kapatma oylamasında'),
+           ('parent_deleting', 'delete', 'Üst konu silme oylamasında'))
 
 
 class TopicQuerySet(models.QuerySet):
@@ -27,16 +39,20 @@ class TopicQuerySet(models.QuerySet):
         """Sayfası açılan konular: silinmemiş ve üst konusu silinmemiş (gizli konunun sayfası açılır)."""
         return self.filter(is_deleted=False).exclude(parent__is_deleted=True)
 
+    def unhidden(self):
+        """Moderasyonla gizlenmemiş ve üst konusu gizlenmemiş (silmedeki gibi miras): arşiv, geri alma önerisi."""
+        return self.filter(is_hidden=False).exclude(parent__is_hidden=True)
+
     def visible(self):
-        """Görünürlüğün tek yeri: listelenen, yorum/oy/öneri alan konular. Kapalıları elemez; gizlileri ve
-        üst konusu gizli olanları eler (silmedeki gibi miras). 8. adımdan beri existing()'in alt kümesi.
+        """Görünürlüğün tek yeri: listelenen, yorum/oy/öneri alan konular. Kapalıları elemez; silinmişleri,
+        gizlileri ve üstü öyle olanları eler. Tek nesnedeki karşılıkları has_page, is_unhidden, is_visible.
         """
-        return self.existing().filter(is_hidden=False).exclude(parent__is_hidden=True)
+        return self.existing().unhidden()
 
     def ranked(self, sort):
         """Yorum sayısını (n_comments) ekler ve SORTS'a göre sıralar. heat ("en popüler") yalnızca
         o sıralamada hesaplanır: son POPULAR_DAYS günün yorumları ve oyları (yönüne bakılmaz).
-        Silinmiş ve gizli yorumlar sayılmaz.
+        Silinmiş ve gizli yorumlar da oyları da sayılmaz.
         """
         ct = ContentType.objects.get_for_model(self.model)
         on_topic = {'content_type': ct, 'object_id': OuterRef('pk'), 'is_deleted': False, 'is_hidden': False}
@@ -46,9 +62,10 @@ class TopicQuerySet(models.QuerySet):
             w = settings.FORUM['POPULAR_WEIGHTS']
             qs = qs.annotate(heat=w['comment'] * count_of(Comment, created_at__gte=since, **on_topic)
                              + w['vote'] * (count_of(CommentVote, voted_at__gte=since, comment__content_type=ct,
-                                                     comment__object_id=OuterRef('pk'), comment__is_hidden=False)
+                                                     comment__object_id=OuterRef('pk'), comment__is_hidden=False,
+                                                     comment__is_deleted=False)
                                             + count_of(TopicVote, voted_at__gte=since, topic=OuterRef('pk'))))
-        return qs.order_by(*SORTS[sort])
+        return qs.order_by(*SORTS[sort][1])
 
 
 class Topic(Commentable, Hideable):
@@ -93,9 +110,14 @@ class Topic(Commentable, Hideable):
         return not (self.is_deleted or (self.parent_id and self.parent.is_deleted))
 
     @property
+    def is_unhidden(self):
+        """unhidden() sorgusunun tek nesnelik karşılığı."""
+        return not (self.is_hidden or (self.parent_id and self.parent.is_hidden))
+
+    @property
     def is_visible(self):
-        """visible() sorgusunun tek nesnelik karşılığı; ikisi birlikte güncellenir."""
-        return self.has_page and not (self.is_hidden or (self.parent_id and self.parent.is_hidden))
+        """visible() sorgusunun tek nesnelik karşılığı; ikisi birlikte güncellenir (testi: TwinTests)."""
+        return self.has_page and self.is_unhidden
 
     @property
     def is_open(self):
@@ -104,6 +126,20 @@ class Topic(Commentable, Hideable):
 
     def can_be_voted_by(self, user):
         return user.can_vote and self.author_id != user.pk and self.is_open
+
+    def pending(self):
+        """Süren kapatma/silme oylaması rozetleri [(öneri tipi, öneri pk, etiket)]: site ve API aynı listeyi çizer.
+        Alanları topics.views.with_pending() ekler (bu dosya voting'i import edemez); eklenmemişse boş.
+        """
+        return [(slug, pk, label) for attr, slug, label in PENDING if (pk := getattr(self, attr, None))]
+
+    def change(self, **fields):
+        """Kabul edilen önerinin uyguladığı değişiklik (Command'ın alıcısı): yalnızca değişen alanlar kaydedilir."""
+        changed = [name for name, value in fields.items() if getattr(self, name) != value]
+        for name in changed:
+            setattr(self, name, fields[name])
+        if changed:
+            self.save(update_fields=changed)
 
 
 class TopicVote(UpDownVote):

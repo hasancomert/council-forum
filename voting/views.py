@@ -4,10 +4,11 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from topics.models import Topic
+from comments.models import vote_block
+from config.errors import RuleError
 
 from .forms import proposal_form
-from .models import PROPOSALS, BaseProposal, TopicUndoProposal, Vote, active_proposals, required_quorum
+from .models import PROPOSALS, BaseProposal, Vote, active_proposals, required_quorum
 
 
 def model_for(slug):
@@ -16,9 +17,8 @@ def model_for(slug):
     return PROPOSALS[slug]
 
 
-def proposal_list(request):  # ana sayfa panelinin "tümü" sayfası
-    proposals = sorted(active_proposals(), key=lambda p: p.voting_ends_at)
-    return render(request, 'voting/list.html', {'proposals': proposals, 'quorum': required_quorum(),
+def proposal_list(request):  # ana sayfa panelinin "tümü" sayfası; sıra paneldeki gibi (evresinin bitişi)
+    return render(request, 'voting/list.html', {'proposals': active_proposals(), 'quorum': required_quorum(),
                                                 'title': 'Açık öneriler'})
 
 
@@ -33,6 +33,7 @@ def page_data(slug, pk, user):
         'my_vote': user.is_authenticated and proposal.votes.filter(voter=user).first(),
         'tally': proposal.results_visible and proposal.tally(),  # kural 6: sonuç bitince açıklanır
         'quorum': proposal.status == BaseProposal.Status.VOTING and required_quorum(),  # katılım çubuğu
+        'why': vote_block(user),  # oy verilemiyorsa nedeni (▲/▼ ve API ile aynı metin)
     }
 
 
@@ -47,10 +48,8 @@ def new_form(slug, topic_pk, user, data=None):
     model = model_for(slug)
     proposal = model(proposer=user)
     if model.TARGET and topic_pk is not None:
-        # Geri alma kapalı/silinmiş konuya açılır; diğerleri yalnızca görünür konuya (gizli içerik forma dolmasın).
-        # Moderasyonla gizlenen konu hiç öneri almaz.
-        topics = Topic.objects.filter(is_hidden=False) if model is TopicUndoProposal else Topic.objects.visible()
-        setattr(proposal, model.TARGET, get_object_or_404(topics, pk=topic_pk))
+        # Hangi konuların hedef olabileceğini tip söyler (geri alma kapalı/silinmiş konuya da açılır).
+        setattr(proposal, model.TARGET, get_object_or_404(model.targets(), pk=topic_pk))
         proposal.prefill()
     elif topic_pk is not None or model.TARGET == 'topic':
         raise Http404  # konuya bağlı tipte konu eksik, ya da konu almayan tipe konu verilmiş
@@ -75,6 +74,6 @@ def vote(request, slug, pk):
     try:
         Vote.cast(proposal=proposal, voter=request.user, choice=request.POST.get('choice'))
         messages.success(request, 'Oyun kaydedildi; oylama bitene kadar değiştirebilirsin.')
-    except ValueError as e:
+    except RuleError as e:
         messages.error(request, str(e))
     return redirect(proposal)

@@ -1,19 +1,20 @@
+import itertools
 from datetime import timedelta
 
 from django.conf import settings
 from django.contrib import admin
-from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
+from accounts.testing import make_user
 from comments.models import Comment, CommentVote
 from voting.models import TopicCloseProposal, TopicDeleteProposal
-from voting.tests import make_user
 
 from .models import Topic, TopicVote
+from .views import TABS
 
 
 class TopicTests(TestCase):
@@ -140,9 +141,6 @@ class HomeTests(TestCase):
     def setUpTestData(cls):
         cls.alice, cls.bob, cls.carol = make_user('alice'), make_user('bob'), make_user('carol')
 
-    def setUp(self):
-        cache.clear()  # panel önbelleği testler arasında taşınmasın
-
     def titles(self, url='/'):
         return [t.title for t in self.client.get(url).context['page']]
 
@@ -194,7 +192,6 @@ class HomeTests(TestCase):
 
     def test_queries_independent_of_topic_count(self):
         def queries():
-            cache.clear()
             with CaptureQueriesContext(connection) as q:
                 self.client.get('/')
             return len(q)
@@ -221,3 +218,63 @@ class HomeTests(TestCase):
         r = self.client.get('/topics/archive/')
         self.assertContains(r, 'SilinenX')
         self.assertNotContains(r, 'KapalıX')
+
+
+class TwinTests(TestCase):
+    """Aynı kural iki biçimde yazılı (sorgu ↔ tek nesne): bütün bayrak birleşimlerinde aynı sonucu vermeli."""
+
+    def test_querysets_match_properties(self):
+        flags = list(itertools.product((False, True), repeat=3))  # kapalı, silinmiş, gizli
+        for closed, deleted, hidden in flags:
+            parent = Topic.objects.create(title='Ü', is_closed=closed, is_deleted=deleted, is_hidden=hidden)
+            for c, d, h in flags:
+                Topic.objects.create(title='A', parent=parent, is_closed=c, is_deleted=d, is_hidden=h)
+        twins = {'has_page': Topic.objects.existing(), 'is_unhidden': Topic.objects.unhidden(),
+                 'is_visible': Topic.objects.visible(), 'is_locked': Topic.objects.filter(TABS['closed'][1])}
+        members = {name: set(qs.values_list('pk', flat=True)) for name, qs in twins.items()}
+        topics = list(Topic.objects.select_related('parent'))
+        self.assertEqual(len(topics), 72)
+        for t in topics:
+            for name in twins:
+                self.assertEqual(t.pk in members[name], bool(getattr(t, name)), (name, t.pk))
+
+
+class RankingTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.alice, cls.bob = make_user('alice'), make_user('bob')
+
+    def test_popular_ignores_votes_on_deleted_comments(self):
+        t = Topic.objects.create(title='T', author=self.alice)
+        c = Comment.objects.create(target=t, author=self.alice, body='x')
+        CommentVote.cast(c, self.bob, 1)
+        self.assertEqual(Topic.objects.ranked('popular').get(pk=t.pk).heat, 4)  # 3 × yorum + 1 × oy
+        c.soft_delete()
+        self.assertEqual(Topic.objects.ranked('popular').get(pk=t.pk).heat, 0)
+
+    def test_same_time_topics_keep_a_stable_order(self):  # sayfalamada tekrar ya da atlama olmasın
+        for i in range(3):
+            Topic.objects.create(title=f'T{i}')
+        Topic.objects.update(created_at=timezone.now())
+        for sort in ('popular', 'votes', 'new'):
+            with self.subTest(sort):
+                self.assertEqual([t.title for t in Topic.objects.ranked(sort)], ['T2', 'T1', 'T0'])
+
+    def test_closed_tab_has_no_popular_sort(self):
+        r = self.client.get('/?tab=closed&sort=popular')
+        self.assertEqual(r.context['sort'], 'new')
+        self.assertNotIn('popular', r.context['sorts'])
+
+    def test_unicode_digit_parent_is_ignored(self):
+        r = self.client.get('/?parent=%C2%B2')  # '²'.isdigit() doğru, int() hata verirdi: 500
+        self.assertEqual((r.status_code, r.context['parent']), (200, None))
+
+    def test_change_saves_only_changed_fields(self):
+        t = Topic.objects.create(title='A', description='d')
+        with self.assertNumQueries(0):
+            t.change(title='A')
+        with CaptureQueriesContext(connection) as q:
+            t.change(title='B', description='d')
+        self.assertEqual(len(q), 1)
+        self.assertIn('"title"', q[0]['sql'])
+        self.assertNotIn('"description"', q[0]['sql'])

@@ -1,20 +1,21 @@
-from django.core.management.base import BaseCommand
-from django.utils import timezone
+from django.core.management.base import BaseCommand, CommandError
 
-from voting.models import PROPOSAL_MODELS, BaseProposal
+from voting.models import PROPOSAL_MODELS
 
 
 class Command(BaseCommand):
     help = 'Süresi dolmuş önerileri sonuçlandırır (kural 3, 4); kabul edilenleri uygular.'
 
     def handle(self, *args, **options):
-        now = timezone.now()
-        count = 0
+        done, failed = 0, 0
         for model in PROPOSAL_MODELS:
-            queryset = model.objects.filter(status=BaseProposal.Status.VOTING, voting_ends_at__lte=now)
-            # kabul edilip uygulanmamış: yarıda kalmış ya da bu sürümden önce bekletilmiş öneri
-            queryset = queryset | model.objects.filter(status=BaseProposal.Status.ACCEPTED)
-            for proposal in queryset:
-                proposal.finalize()
-                count += 1
-        self.stdout.write(self.style.SUCCESS(f'{count} öneri işlendi.'))
+            for proposal in model.objects.due():
+                try:
+                    proposal.finalize()
+                    done += 1
+                except Exception as e:  # bir önerinin hatası ötekileri durdurmasın; sonraki çalışmada yeniden denenir
+                    failed += 1
+                    self.stderr.write(f'{proposal.SLUG}/{proposal.pk}: {e!r}')
+        self.stdout.write(self.style.SUCCESS(f'{done} öneri işlendi.'))
+        if failed:
+            raise CommandError(f'{failed} öneri işlenemedi.')  # çıkış kodu 1: systemd birimi hatalı görünür

@@ -1,17 +1,22 @@
+import io
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+from urllib.error import URLError
 
 from django.conf import settings
 from django.core import mail
-from django.test import TestCase
+from django.db import connection
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from comments.models import Comment
+from moderation.models import ModAction
 from topics.models import Topic
 from voting.models import TopicCloseProposal, TopicEditProposal, Vote
-from voting.tests import make_user
 
+from .forms import TURNSTILE_URL, turnstile_ok
 from .models import User
+from .testing import make_user
 
 FORM = {'username': 'ali', 'first_name': 'Ali', 'last_name': 'Veli', 'email': 'Ali@Example.com',
         'password1': 'uzun-bir-sifre-42', 'password2': 'uzun-bir-sifre-42', 'terms': 'on'}
@@ -71,6 +76,27 @@ class SignupTests(TestCase):
         self.assertEqual(User.objects.count(), 1)
         self.assertEqual(len(mail.outbox), 2)
 
+    def test_cleanup_skips_account_closed_by_moderation(self, _):
+        # hiç giriş yapmadan kapatılan hesabın kaydı (PROTECT) silinemez: her kayıt denemesi 500 veriyordu
+        closed = make_user('kapatilan')
+        ModAction.objects.create(moderator=make_user('yonetici'), user=closed, kind='close', reason='fake', note='.')
+        User.objects.filter(pk=closed.pk).update(is_active=False, date_joined=timezone.now() - timedelta(days=30))
+        self.assertEqual(self.signup().status_code, 200)
+        self.assertTrue(User.objects.filter(pk=closed.pk).exists())
+
+    def test_captcha_checked_outside_transaction(self, captcha):
+        # Cloudflare'e soru (en çok 10 sn) bir veritabanı işleminin içinde olsaydı SQLite yazma kilidini tutardı
+        depth = []
+        captcha.side_effect = lambda token: depth.append(len(connection.savepoint_ids)) or True
+        baseline = len(connection.savepoint_ids)  # testin kendi işlemi
+        self.signup()
+        self.assertEqual(depth, [baseline])
+        self.assertTrue(User.objects.filter(username='ali').exists())
+
+    def test_passwords_hidden_from_error_reports(self, _):
+        r = self.signup()
+        self.assertEqual(r.wsgi_request.sensitive_post_parameters, ('password1', 'password2'))
+
 
 class VoteTests(TestCase):
     def test_weight_and_min_age(self):
@@ -122,9 +148,19 @@ class DeleteAccountTests(TestCase):
         return self.client.post('/accounts/delete/', {'password': 'dogru-sifre-42'} | data)
 
     def test_wrong_password_changes_nothing(self):
-        self.assertContains(self.delete(password='yanlis'), 'Şifre yanlış.')
+        r = self.delete(password='yanlis')
+        self.assertContains(r, 'Şifre yanlış.')
+        self.assertEqual(r.wsgi_request.sensitive_post_parameters, ('password',))  # 500 e-postasında görünmez
         self.user.refresh_from_db()
         self.assertIsNone(self.user.deleted_at)
+
+    def test_lookalike_name_cannot_block_deletion(self):
+        # anonimleştirme pk'den türeyen ad yazsaydı biri o adla önceden kayıt olup silmeyi (KVKK) engelleyebilirdi
+        make_user(f'silinmis-{self.user.pk}')
+        User.objects.create_user('x', f'{self.user.pk}@silinmis.invalid', None, first_name='A', last_name='B')
+        self.assertRedirects(self.delete(), '/')
+        self.user.refresh_from_db()
+        self.assertIsNotNone(self.user.deleted_at)
 
     def test_anonymizes_and_keeps_finished_votes(self):
         self.assertRedirects(self.delete(), '/')
@@ -154,3 +190,34 @@ class DeleteAccountTests(TestCase):
         with patch('accounts.forms.turnstile_ok', return_value=True):
             self.client.post('/accounts/signup/', FORM)  # doğrulanmamış hesap temizliği anonim hesaba dokunmaz
         self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+
+
+class TurnstileTests(SimpleTestCase):
+    """CAPTCHA doğrulayıcısı (accounts.forms.turnstile_ok): Cloudflare yerine sahte urlopen."""
+
+    def reply(self, body):
+        response = MagicMock()
+        response.__enter__.return_value = io.BytesIO(body)
+        return response
+
+    @patch('accounts.forms.urlopen')
+    def test_success_and_request(self, urlopen):
+        urlopen.return_value = self.reply(b'{"success": true}')
+        self.assertTrue(turnstile_ok('jeton'))
+        url, data = urlopen.call_args.args[:2]
+        self.assertEqual(url, TURNSTILE_URL)
+        self.assertIn(b'response=jeton', data)
+        self.assertIn(b'secret=', data)
+
+    @patch('accounts.forms.urlopen')
+    def test_rejects_without_token_on_failure_and_on_errors(self, urlopen):
+        self.assertFalse(turnstile_ok(''))
+        urlopen.assert_not_called()  # jetonsuz istek Cloudflare'e gitmez
+        urlopen.return_value = self.reply(b'{"success": false}')
+        self.assertFalse(turnstile_ok('jeton'))
+        urlopen.return_value = self.reply(b'bozuk')  # JSON değil: fail-closed ve kayda düşer
+        with self.assertLogs('accounts.forms', 'WARNING'):
+            self.assertFalse(turnstile_ok('jeton'))
+        urlopen.side_effect = URLError('ağ yok')
+        with self.assertLogs('accounts.forms', 'WARNING'):
+            self.assertFalse(turnstile_ok('jeton'))

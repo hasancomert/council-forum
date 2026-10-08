@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -10,14 +11,22 @@ from django.contrib.auth.password_validation import get_default_password_validat
 
 from .models import User
 
+logger = logging.getLogger(__name__)
+TURNSTILE_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
+
 
 def turnstile_ok(token):
-    """Cloudflare'e sorar: CAPTCHA çözüldü mü? Ağ/yanıt hatasında kayıt reddedilir."""
+    """Cloudflare'e sorar: CAPTCHA çözüldü mü? Jeton yoksa sormaz. Ağ/yanıt hatasında kayıt reddedilir (fail-closed)
+    ve neden kayda düşer (yanlış anahtar, CSP, ağ: hepsi kullanıcıya aynı mesajı verir, işletmeci kayıttan görür).
+    """
+    if not token:
+        return False
     data = urlencode({'secret': settings.TURNSTILE_SECRET_KEY, 'response': token}).encode()
     try:
-        with urlopen('https://challenges.cloudflare.com/turnstile/v0/siteverify', data, timeout=10) as r:
+        with urlopen(TURNSTILE_URL, data, timeout=10) as r:
             return json.load(r).get('success') is True
-    except (OSError, ValueError):
+    except (OSError, ValueError) as e:
+        logger.warning('Turnstile doğrulanamadı: %r', e)
         return False
 
 

@@ -5,7 +5,6 @@ Bu dosyada yalnızca kimlik (jeton) ve JSON biçimi var; gizli içerik ve oy giz
 import json
 from datetime import timedelta
 from functools import wraps
-from operator import attrgetter
 
 from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm
@@ -13,25 +12,23 @@ from django.contrib.auth.models import AnonymousUser, update_last_login
 from django.contrib.contenttypes.models import ContentType
 from django.core import signing
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db.models import DateTimeField
 from django.forms import Textarea
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from django.utils.crypto import constant_time_compare
-from django.utils.formats import date_format
 from django.views.decorators.csrf import csrf_exempt
 
 from accounts.models import User
 from comments.models import Comment, Commentable, CommentVote, vote_block
 from comments.views import create, section
-from config.templatetags import ago, capfirst, left
+from config.errors import RuleError
+from config.templatetags import ago, capfirst, left, when
 from config.utils import get_target
 from moderation.models import Hideable
 from moderation.views import file_report
 from topics.models import Topic, TopicVote
 from topics.views import listing, page_data as topic_data
-from voting.models import BaseProposal, Vote, active_proposals, mark_voted, open_proposal_count, required_quorum
+from voting.models import Vote, active_proposals, mark_voted, open_proposal_count, required_quorum
 from voting.views import model_for, new_form, page_data as proposal_data
 
 SALT = 'api.token'
@@ -66,11 +63,12 @@ def reply(data, status=200):
                                  'Access-Control-Allow-Headers': 'Authorization, Content-Type'})
 
 
-def api(*methods, login=('POST',)):
+def api(*methods, login=('POST',), token=True):
     """API görünümü: yöntem denetimi, jetonla kimlik, JSON gövde (request.data), JSON yanıt. Görünüm sözlük ya da
-    (sözlük, durum kodu) döndürür; kural ihlali (ValueError, ValidationError) 400, yetki 403, bulunamadı 404 olur.
-    login: giriş isteyen yöntemler. Oturum çerezi okunmaz (request.user yalnızca jetondan): tarayıcı başka bir
-    siteden gelen isteğe jetonu kendiliğinden eklemez, CSRF saldırısının taşıyacağı kimlik yok (csrf_exempt).
+    (sözlük, durum kodu) döndürür; kural ihlali (RuleError, ValidationError) 400, yetki 403, bulunamadı 404 olur.
+    login: giriş isteyen yöntemler. token=False: jeton okunmaz (girişte eski jeton doğru şifreyi 401 yapmasın).
+    Oturum çerezi okunmaz (request.user yalnızca jetondan): tarayıcı başka bir siteden gelen isteğe jetonu
+    kendiliğinden eklemez, CSRF saldırısının taşıyacağı kimlik yok (csrf_exempt).
     """
     def decorator(view):
         @csrf_exempt
@@ -80,14 +78,14 @@ def api(*methods, login=('POST',)):
                 return reply({})
             if request.method not in methods:
                 return reply({'error': 'Bu yöntem desteklenmiyor.'}, 405)
-            user = request.user = token_user(request)
+            user = request.user = token_user(request) if token else AnonymousUser()
             if user is None:
                 return reply({'error': 'Oturumun sona erdi, yeniden giriş yap.'}, 401)
             if request.method in login and not user.is_authenticated:
                 return reply({'error': 'Bunun için giriş yap.'}, 401)
             try:
                 request.data = json.loads(request.body or '{}') if request.method == 'POST' else {}
-            except ValueError:
+            except (ValueError, RecursionError):  # çok derin iç içe dizi de 400 olsun, 500 değil
                 request.data = None
             if not isinstance(request.data, dict):
                 return reply({'error': 'Gövde bir JSON nesnesi olmalı.'}, 400)
@@ -99,18 +97,14 @@ def api(*methods, login=('POST',)):
                 return reply({'error': 'Bunu yapamazsın.'}, 403)
             except ValidationError as e:
                 return reply({'error': ' '.join(e.messages)}, 400)
-            except ValueError as e:  # model kuralları: Vote.cast, UpDownVote.cast, create, file_report
+            except RuleError as e:  # model kuralları: Vote.cast, UpDownVote.cast, create, file_report
                 return reply({'error': str(e)}, 400)
             return reply(*result) if isinstance(result, tuple) else reply(result)
         return wrapped
     return decorator
 
 
-# Biçim yardımcıları: süreler sitedeki ago/left süzgeçleriyle, tarihler sitedeki "j F Y H:i" biçiminde.
-
-def when(dt, fmt='j F Y H:i'):
-    return dt and date_format(timezone.localtime(dt), fmt)
-
+# Biçim yardımcıları: süreler ve tarihler sitedeki ago/left/when süzgeçleriyle.
 
 def name(user):
     return str(user) if user else 'silinmiş üye'  # User.__str__ silinen hesabı zaten maskeler
@@ -124,27 +118,18 @@ def pages(page):
     return {'page': page.number, 'pages': page.paginator.num_pages}
 
 
-def ref(topic, label='Konu'):
+def ref(topic, label):
     """Başka bir konuya bağlantı. Gizli konunun adı maskeli (Topic.__str__), silinmişin sayfası yok."""
-    return topic and {'pk': topic.pk, 'title': str(topic), 'has_page': topic.has_page, 'label': label}
+    return topic and {'pk': topic.pk, 'title': str(topic), 'has_page': topic.has_page, 'label': capfirst(label)}
 
 
 def errors(form):
     return {k: [e['message'] for e in v] for k, v in form.errors.get_json_data().items()}
 
 
-# topics/_pending.html: (with_pending() alanı, öneri tipi, rozet)
-PENDING = (('closing', 'close', 'Kapatma oylamasında'), ('deleting', 'delete', 'Silme oylamasında'),
-           ('parent_closing', 'close', 'Üst konu kapatma oylamasında'),
-           ('parent_deleting', 'delete', 'Üst konu silme oylamasında'))
-# konu sayfasındaki öneri bağlantıları (topics/detail.html)
-ACTIONS = {'open': 'Alt konu öner', 'request': 'İstek aç', 'edit': 'Düzenleme öner', 'close': 'Kapatma öner',
-           'delete': 'Silme öner', 'undo': 'Yeniden açmayı öner'}
-
-
 def pending(t):
-    """Süren kapatma/silme önerisi rozetleri: with_pending()'ten geçmiş konu."""
-    return [{'label': label, 'slug': slug, 'pk': getattr(t, a)} for a, slug, label in PENDING if getattr(t, a, None)]
+    """Süren kapatma/silme önerisi rozetleri (topics/_pending.html ile aynı liste: Topic.pending)."""
+    return [{'label': label, 'slug': slug, 'pk': pk} for slug, pk, label in t.pending()]
 
 
 def row(t):
@@ -164,7 +149,7 @@ def me_data(user):
             'max_open_proposals': settings.FORUM['MAX_OPEN_PROPOSALS']}
 
 
-@api('POST', login=())
+@api('POST', login=(), token=False)
 def login(request):
     """Takma ad + şifre → jeton. Sitenin giriş formu: aynı denetimler ve hata mesajları (doğrulanmamış hesap vb.)."""
     form = AuthenticationForm(request, data=request.data)
@@ -192,17 +177,13 @@ def topics(request):
 def topic(request, pk):
     d, user = topic_data(pk, request.user), request.user
     t, masked = d['topic'], d['masked']
-    actions = []
-    if user.is_authenticated and t.is_open:
-        actions = [*([] if t.parent_id else ['open']), 'request', 'edit', 'close', 'delete']
-    elif user.is_authenticated and t.is_closed and not t.is_hidden:
-        actions = ['undo']
     return {
         'pk': t.pk, 'ct': ct_of(t), 'title': d['title'], 'description': '' if masked else t.description,
         'masked': masked, 'hidden': t.is_hidden and not masked, 'author': name(t.author), 'created': when(t.created_at),
         'score': t.score, 'mine': d['my_vote'], 'why': d['vote_why'], 'locked': t.is_locked, 'open': t.is_open,
         'parent': ref(t.parent, 'Üst konu'), 'pending': pending(t), 'can_report': t.can_be_reported_by(user),
-        'actions': [[a, ACTIONS[a]] for a in actions],
+        # öneri bağlantıları [tip, etiket]: topics/detail.html ile aynı liste (topics.views.proposal_links)
+        'actions': d['links'], 'more_actions': d['more_links'],
         'subs': [row(s) for s in d.get('subs', ())], 'n_subs': d.get('n_subs'),
     }
 
@@ -246,9 +227,7 @@ def comments(request, ct, pk):
 
 @api('POST')
 def comment_delete(request, pk):
-    c = get_object_or_404(Comment, pk=pk, author=request.user)
-    c.is_deleted = True  # yumuşak silme; hedef kapalı olsa da serbest, geri alınmaz
-    c.save(update_fields=['is_deleted'])
+    get_object_or_404(Comment, pk=pk, author=request.user).soft_delete()
     return {'deleted': True}
 
 
@@ -260,7 +239,7 @@ def comment_vote(request, pk):
 @api('GET')
 def proposals(request):
     """Açık öneriler (voting/_item.html): evresinin bitişi yakın önce; voted yalnızca oy hakkı olana (yoksa null)."""
-    props = sorted(active_proposals(), key=attrgetter('deadline'))
+    props = active_proposals()
     mark_voted([p for p in props if not p.in_discussion], request.user)
     return {'quorum': required_quorum(), 'results': [
         {'slug': p.SLUG, 'pk': p.pk, 'kind': capfirst(p.kind), 'title': str(p), 'discussion': p.in_discussion,
@@ -268,38 +247,25 @@ def proposals(request):
         for p in props]}
 
 
-BASE_FIELDS = {f.name for f in BaseProposal._meta.fields} | {'id', 'topic', 'parent'}
-
-
-def details(p):
-    """Önerinin kendi alanları (başlık, açıklama, üye, işlem, gerekçe…) etiketiyle; boşlar ve tarihler hariç."""
-    out = []
-    for f in p._meta.concrete_fields:
-        if f.name not in BASE_FIELDS and not isinstance(f, DateTimeField):
-            value = getattr(p, f'get_{f.name}_display')() if f.choices else getattr(p, f.name)
-            if value:
-                out.append({'label': capfirst(f.verbose_name), 'value': str(value)})
-    return out
-
-
 @api('GET')
 def proposal(request, slug, pk):
     """Öneri (voting/detail.html). Kural 6: oylama sürerken yalnızca katılım; sonuç (result) bitince."""
     d, user = proposal_data(slug, pk, request.user), request.user
     p, masked, tally = d['proposal'], d['masked'], d['tally']
-    target = p.TARGET and getattr(p, p.TARGET)
     return {
         'slug': p.SLUG, 'pk': p.pk, 'ct': ct_of(p), 'kind': capfirst(p.kind), 'title': d['title'], 'masked': masked,
         'hidden': p.is_hidden and not masked, 'proposer': name(p.proposer), 'created': when(p.created_at),
-        'topic': None if masked else ref(target, 'Üst konu' if p.TARGET == 'parent' else 'Konu'),
-        'details': [] if masked else details(p),
+        'topic': None if masked else ref(p.target, p.target_label),
+        # öneri sayfasıyla aynı liste (BaseProposal.details)
+        'details': [] if masked else [{'label': capfirst(k), 'value': v} for k, v in p.details()],
         'status': p.status, 'status_label': p.get_status_display(),
         'discussion_ends': when(p.discussion_ends_at) if p.in_discussion else None, 'ends': when(p.voting_ends_at),
         'left': left(p.voting_ends_at),
         # katılım çubuğu yalnızca oylamada; sonuç yalnızca bitince (tally False iken None)
         'turnout': {'n': p.participant_count, 'quorum': d['quorum']} if d['quorum'] and not p.in_discussion else None,
-        'result': {**tally, 'quorum': p.quorum, 'weighted': p.WEIGHTED, 'applied': when(p.applied_at)} if tally else None,
-        'accepts': p.accepts_votes(), 'mine': d['my_vote'].choice if d['my_vote'] else None, 'why': vote_block(user),
+        'result': ({**tally, 'quorum': p.quorum, 'weighted': p.WEIGHTED, 'applied': when(p.applied_at) or None}
+                   if tally else None),
+        'accepts': p.accepts_votes(), 'mine': d['my_vote'].choice if d['my_vote'] else None, 'why': d['why'],
         'can_report': p.can_be_reported_by(user),
     }
 
@@ -330,9 +296,9 @@ def proposal_new(request, slug, topic_pk=None):
             return {'errors': errors(form)}, 400
         form.save()
         return {'slug': proposal.SLUG, 'pk': proposal.pk}, 201
-    target = proposal.TARGET and getattr(proposal, proposal.TARGET)
+    target = proposal.target
     return {'title': f'Yeni {proposal._meta.verbose_name}', 'target': target and str(target),
-            'fields': [field(bf) for bf in form]}
+            'target_label': capfirst(proposal.target_label), 'fields': [field(bf) for bf in form]}
 
 
 @api('POST')

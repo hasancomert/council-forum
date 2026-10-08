@@ -1,30 +1,29 @@
 from datetime import timedelta
 from io import StringIO
+from types import SimpleNamespace
+from unittest import mock
 
-from django.core.cache import cache
-from django.core.exceptions import ValidationError
-from django.core.management import call_command
-from django.test import TestCase
+from django.conf import settings
+from django.contrib import admin
+from django.core.exceptions import ImproperlyConfigured, ValidationError
+from django.core.management import CommandError, call_command
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from accounts.models import User
+from accounts.testing import make_user
 from topics.models import Topic
+from topics.views import proposal_links
 
+from .checks import forum_settings
 from .models import (
-    BaseProposal, ExpertProposal, RequestProposal, TopicCloseProposal, TopicEditProposal,
-    TopicOpenProposal, TopicUndoProposal, Vote, open_proposal_count, required_quorum,
+    PROPOSAL_MODELS, PROPOSALS, BaseProposal, ExpertProposal, RequestProposal, TopicCloseProposal,
+    TopicDeleteProposal, TopicEditProposal, TopicOpenProposal, TopicProposal, TopicUndoProposal, Vote, mark_voted,
+    open_proposal_count, required_quorum,
 )
 
 S = BaseProposal.Status
 YES, NO = Vote.Choice.YES, Vote.Choice.NO
-
-
-def make_user(name, role='A', days=10):
-    # Şifresiz (None): hash'leme testleri yavaşlatır; giriş force_login ile yapılır.
-    user = User.objects.create_user(name, f'{name}@example.com', None, first_name='Ad', last_name='Soyad', role=role)
-    User.objects.filter(pk=user.pk).update(date_joined=timezone.now() - timedelta(days=days))
-    user.refresh_from_db()
-    return user
 
 
 class VotingTestCase(TestCase):
@@ -224,10 +223,6 @@ class PageTests(VotingTestCase):
 
 
 class PanelTests(VotingTestCase):
-    def setUp(self):
-        super().setUp()
-        cache.clear()  # panel önbelleği testler arasında taşınmasın
-
     def panel(self, url='/'):
         html = self.client.get(url).content.decode()
         return html[html.index('<aside>'):html.index('</aside>')]
@@ -247,7 +242,6 @@ class PanelTests(VotingTestCase):
         self.assertNotIn('Evet', panel)
         self.assertNotIn('Bitti', panel)
         RequestProposal.objects.filter(pk=r.pk).update(discussion_ends_at=now)  # oylama evresine geçti
-        cache.clear()
         panel = self.panel(self.topic.get_absolute_url())  # konu sayfasında da var
         self.assertNotIn('Tartışmada', panel)
         self.assertIn('İstek', panel)
@@ -267,7 +261,7 @@ class PanelTests(VotingTestCase):
         self.client.force_login(self.voters[0])
         self.assertIn('Oy ver', self.panel())
         Vote.cast(proposal=p, voter=self.voters[0], choice=YES)
-        self.assertNotIn('Oy ver', self.panel())  # ortak kısım önbellekte, işaret yine de güncel
+        self.assertNotIn('Oy ver', self.panel())
 
 
 class FormTests(VotingTestCase):
@@ -372,3 +366,201 @@ class CleanTests(VotingTestCase):
         ExpertProposal(proposer=self.proposer, target_user=self.proposer, action=grant).clean()
         self.assertInvalid(ExpertProposal(proposer=self.proposer, target_user=other, action='revoke'), 'bilirkişi değil')
         ExpertProposal(proposer=self.proposer, target_user=self.expert, action='revoke').clean()
+
+
+class LifecycleTests(VotingTestCase):
+    """Kabul edilen önerinin konuyu değiştirmesi (kural 7'nin ana yolları) ve sürenin zamanlayıcısız işlemesi."""
+
+    def accept(self, proposal):
+        self.vote(proposal, yes=self.voters)
+        self.expire(proposal)
+        self.assertEqual(proposal.status, S.APPLIED)
+        self.topic.refresh_from_db()
+
+    def test_edit_delete_and_restore(self):
+        self.accept(TopicEditProposal.objects.create(proposer=self.proposer, topic=self.topic, new_title='Yeni',
+                                                     new_description='Açıklama'))
+        self.assertEqual((self.topic.title, self.topic.description), ('Yeni', 'Açıklama'))
+        self.accept(TopicDeleteProposal.objects.create(proposer=self.proposer, topic=self.topic))
+        self.assertTrue(self.topic.is_deleted)
+        self.assertEqual(self.client.get(self.topic.get_absolute_url()).status_code, 404)  # içerik gizli, satır duruyor
+        self.accept(TopicUndoProposal.objects.create(proposer=self.proposer, topic=self.topic, action='restore'))
+        self.assertFalse(self.topic.is_deleted)
+
+    def test_subtopic_opened_under_parent_by_proposer(self):
+        self.accept(TopicOpenProposal.objects.create(proposer=self.proposer, parent=self.topic, title='Alt'))
+        child = Topic.objects.get(title='Alt')
+        self.assertEqual((child.parent, child.author), (self.topic, self.proposer))
+
+    def test_expert_status_revoked_unweighted(self):
+        p = ExpertProposal.objects.create(proposer=self.proposer, target_user=self.expert, action='revoke', reason='.')
+        self.vote(p, yes=self.voters[:4], no=[self.voters[4]])  # 4/5 ≥ 2/3; uzmanın kendi oyu da 1 sayılırdı
+        self.expire(p)
+        self.expert.refresh_from_db()
+        self.assertEqual((p.status, self.expert.role), (S.APPLIED, User.Role.MEMBER))
+
+    def test_request_accepted_after_discussion_and_voting(self):
+        r = RequestProposal.objects.create(proposer=self.proposer, topic=self.topic, title='İstek', content='.')
+        RequestProposal.objects.filter(pk=r.pk).update(discussion_ends_at=timezone.now())
+        r.refresh_from_db()
+        self.vote(r, yes=self.voters)
+        self.expire(r)
+        self.assertEqual(r.status, S.APPLIED)
+
+    def test_expired_proposal_frees_quota_and_finalizes_without_timer(self):
+        p = TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic)
+        self.vote(p, yes=self.voters)
+        TopicCloseProposal.objects.filter(pk=p.pk).update(voting_ends_at=timezone.now())
+        self.assertEqual(open_proposal_count(self.proposer), 0)  # kural 8: süresi dolan öneri açık sayılmaz
+        self.client.get('/')  # panel vadesi geleni sonuçlandırır (lazy): yerel sunucuda zamanlayıcı yok
+        p.refresh_from_db()
+        self.topic.refresh_from_db()
+        self.assertEqual(p.status, S.APPLIED)
+        self.assertTrue(self.topic.is_closed)
+
+    def test_request_keeps_given_end_and_deadline_follows_phase(self):
+        end = timezone.now() + timedelta(days=10)
+        r = RequestProposal.objects.create(proposer=self.proposer, topic=self.topic, title='İstek', content='.',
+                                           voting_ends_at=end)
+        self.assertEqual(r.voting_ends_at, end)  # taban sınıftaki gibi verilen tarih korunur (LSP)
+        self.assertEqual(r.deadline, r.discussion_ends_at)  # tartışmada: oylamanın başlangıcı
+        RequestProposal.objects.filter(pk=r.pk).update(discussion_ends_at=timezone.now())
+        r.refresh_from_db()
+        self.assertEqual(r.deadline, end)
+        self.assertEqual(TopicCloseProposal(voting_ends_at=end).deadline, end)
+
+    def test_list_sorted_by_phase_end_like_panel_and_api(self):
+        now = timezone.now()
+        close = TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic)  # 2 günde biter
+        request = RequestProposal.objects.create(
+            proposer=self.voters[0], topic=self.topic, title='İstek', content='.',
+            discussion_ends_at=now + timedelta(hours=1), voting_ends_at=now + timedelta(days=3))
+        self.assertEqual(list(self.client.get('/proposals/').context['proposals']), [request, close])
+
+    def test_voted_marker_tells_types_with_same_pk_apart(self):
+        a = TopicOpenProposal.objects.create(pk=900, proposer=self.proposer, title='A')
+        b = TopicCloseProposal.objects.create(pk=900, proposer=self.proposer, topic=self.topic)
+        Vote.cast(proposal=b, voter=self.voters[0], choice=YES)
+        mark_voted([a, b], self.voters[0])
+        self.assertEqual((a.voted, b.voted), (False, True))
+
+    def test_vote_text_hides_choice(self):  # kural 6: Django'nun silme onay sayfası gibi yerler str() yazar
+        vote = Vote.cast(proposal=TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic),
+                         voter=self.voters[0], choice=YES)
+        self.assertNotIn('yes', str(vote))
+        self.assertNotIn(self.voters[0].username, str(vote))
+
+    def test_command_isolates_failing_proposal(self):
+        ok = TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic)
+        bad = TopicOpenProposal.objects.create(proposer=self.proposer, title='Bozuk')
+        for p in (ok, bad):
+            type(p).objects.filter(pk=p.pk).update(voting_ends_at=timezone.now())
+        err = StringIO()
+        with mock.patch.object(TopicOpenProposal, 'finalize', side_effect=RuntimeError('bozuk')):
+            with self.assertRaises(CommandError):  # çıkış kodu 1: zamanlayıcı birimi hatalı görünür
+                call_command('finalize_proposals', stdout=StringIO(), stderr=err)
+        ok.refresh_from_db()
+        self.assertEqual(ok.status, S.REJECTED)  # öteki yine sonuçlandı (yeter sayı yok)
+        self.assertIn(f'open/{bad.pk}', err.getvalue())
+
+    def test_undo_not_offered_under_hidden_parent(self):
+        Topic.objects.filter(pk=self.topic.pk).update(is_hidden=True)
+        child = Topic.objects.get(pk=Topic.objects.create(title='Alt', parent=self.topic, is_closed=True).pk)
+        self.client.force_login(self.proposer)
+        self.assertEqual(self.client.get(f'/proposals/new/undo/{child.pk}/').status_code, 404)
+        with self.assertRaisesMessage(ValidationError, 'Gizlenmiş'):
+            TopicUndoProposal(proposer=self.proposer, topic=child, action='reopen').clean()
+
+
+class RegistryTests(SimpleTestCase):
+    """Registry: tipler kendini kaydeder. Sözleşme testi: yeni bir tip de bu koşulları kendiliğinden sağlamalı."""
+
+    def test_every_concrete_type_registers_itself(self):
+        self.assertEqual(list(PROPOSALS), ['open', 'edit', 'close', 'delete', 'undo', 'expert', 'request'])
+        self.assertNotIn(TopicProposal, PROPOSAL_MODELS)  # soyut ara sınıf kaydolmaz
+        for model in PROPOSAL_MODELS:
+            with self.subTest(model.SLUG):
+                self.assertIs(PROPOSALS[model.SLUG], model)
+                self.assertTrue(admin.site.is_registered(model))  # admin de aynı listeden
+                self.assertTrue(model.DUPLICATE_FIELDS)  # kural 8
+                self.assertIsNot(model.apply, BaseProposal.apply)  # Command: her tip kendi işlemini uygular
+
+    def test_same_slug_cannot_register_twice(self):
+        with self.assertRaisesMessage(ImproperlyConfigured, 'zaten kayıtlı'):
+            type('KopyaKapatma', (TopicCloseProposal,), {'SLUG': 'close', '__module__': 'voting.models'})
+        self.assertIs(PROPOSALS['close'], TopicCloseProposal)
+
+
+class RuleTests(SimpleTestCase):
+    """Kabul kuralları (Strategy: _accepted) ve yeter sayı; veritabanısız, sahte üye sayısıyla."""
+
+    def test_weighted_majority_and_tie(self):  # kural 4
+        p = TopicCloseProposal()
+        self.assertTrue(p._accepted({'yes': 11, 'no': 10, 'count': 2}))
+        self.assertFalse(p._accepted({'yes': 10, 'no': 10, 'count': 2}))  # eşitlikte ret
+
+    def test_two_thirds_and_no_votes(self):  # kural 2
+        e = ExpertProposal()
+        self.assertTrue(e._accepted({'yes': 2, 'no': 1, 'count': 3}))
+        self.assertFalse(e._accepted({'yes': 3, 'no': 2, 'count': 5}))
+        self.assertFalse(e._accepted({'yes': 0, 'no': 0, 'count': 0}))  # oy yoksa ret
+
+    def test_quorum_is_ten_percent_with_minimum(self):  # kural 3
+        for members, quorum in ((0, 5), (50, 5), (51, 6), (101, 11)):
+            with self.subTest(members), mock.patch('voting.models.active_member_count', return_value=members):
+                self.assertEqual(required_quorum(), quorum)
+
+
+class LinkTests(SimpleTestCase):
+    """Konu sayfasındaki öneri bağlantıları tiplerin kendi hedef denetiminden çıkar (offered_for). Kaydedilmemiş
+    konular ve sahte kullanıcıyla: SimpleTestCase veritabanı sorgusuna izin vermez, yani bağlantılar sorgusuz.
+    """
+    member = SimpleNamespace(is_authenticated=True, can_vote=True)
+    main = Topic(pk=1, title='Ana')
+
+    def links(self, topic, user=member):
+        main, more = proposal_links(topic, user)
+        return [slug for slug, _ in main], [slug for slug, _ in more]
+
+    def test_open_topics(self):
+        self.assertEqual(self.links(self.main), (['open', 'request'], ['edit', 'close', 'delete']))
+        self.assertEqual(self.links(Topic(pk=2, parent=self.main)), (['request'], ['edit', 'close', 'delete']))
+
+    def test_closed_hidden_and_no_voting_right(self):
+        self.assertEqual(self.links(Topic(pk=2, is_closed=True)), (['undo'], []))
+        self.assertEqual(self.links(Topic(pk=2, is_closed=True, is_hidden=True)), ([], []))
+        hidden = Topic(pk=3, is_hidden=True)
+        self.assertEqual(self.links(Topic(pk=2, parent=hidden, is_closed=True)), ([], []))  # gizli ana konunun altı
+        self.assertEqual(self.links(Topic(pk=2, parent=Topic(pk=3, is_closed=True))), ([], []))  # üstü kapalı
+        self.assertEqual(self.links(self.main, SimpleNamespace(is_authenticated=True, can_vote=False)), ([], []))
+
+
+class DetailsTests(SimpleTestCase):
+    """Öneri sayfası ve API'nin ortak verisi: tipin kendi alanları ve hedefi (veritabanısız)."""
+
+    def test_fields_target_and_label(self):
+        topic = Topic(pk=1, title='Konu')
+        edit = TopicEditProposal(topic=topic, new_title='Yeni', new_description='')
+        self.assertEqual(edit.details(), [('yeni başlık', 'Yeni')])  # boş alan yok, hedef konu ayrı
+        self.assertEqual((edit.target, edit.target_label), (topic, 'konu'))
+        self.assertEqual(TopicCloseProposal(topic=topic).details(), [])
+        self.assertEqual(TopicOpenProposal(title='A').target_label, 'üst konu')
+        expert = ExpertProposal(target_user=User(username='ali'), action='grant', reason='Deneyim')
+        self.assertEqual(expert.details(), [('üye', 'ali'), ('işlem', 'B statüsü ver'), ('gerekçe', 'Deneyim')])
+        self.assertEqual((expert.target, expert.target_label), (None, ''))
+
+
+class SettingsCheckTests(SimpleTestCase):
+    """Kural sayıları açılışta denetlenir (voting/checks.py)."""
+
+    def test_current_settings_pass(self):
+        self.assertEqual(forum_settings(None), [])
+
+    def test_wrong_values_are_reported(self):
+        bad = {**settings.FORUM, 'QUORUM_MIN': 0, 'VOTE_WEIGHT': {'A': 1}, 'COMMENT_RATE': (5,),
+               'EXPERT_APPROVAL_NUM': 4, 'POPULAR_WEIGHTS': {'comment': 3}, 'PROPOSAL_VOTING_DAYS': 0}
+        with self.settings(FORUM=bad):
+            text = ' '.join(e.msg for e in forum_settings(None))
+        for key in ('QUORUM_MIN', 'VOTE_WEIGHT', 'COMMENT_RATE', 'EXPERT_APPROVAL_NUM', 'POPULAR_WEIGHTS',
+                    'PROPOSAL_VOTING_DAYS'):
+            self.assertIn(key, text)

@@ -1,13 +1,15 @@
+from unittest import mock
+
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 from django.utils import timezone
 
 from accounts.models import User
+from accounts.testing import make_user
 from comments.models import Comment
 from topics.models import Topic
 from voting.models import BaseProposal, RequestProposal, TopicCloseProposal, Vote
-from voting.tests import make_user
 
 from .views import make_token
 
@@ -71,6 +73,19 @@ class AuthTests(ApiTestCase):
         self.assertIn('Authorization', r['Access-Control-Allow-Headers'])
         r = self.client.post('/api/login/', '[1]', content_type='application/json')
         self.assertEqual(r.status_code, 400)
+        deep = '[' * 100000 + ']' * 100000  # json.loads RecursionError atar: ValueError değil, 500 oluyordu
+        self.assertEqual(self.client.post('/api/login/', deep, content_type='application/json').status_code, 400)
+
+    def test_unexpected_value_error_is_not_shown_as_a_rule(self):
+        # yalnızca RuleError kullanıcıya mesaj olur; programlama hatası 500 (ADMINS'e e-posta), iç mesaj sızmaz
+        with mock.patch('api.views.create', side_effect=ValueError('iç ayrıntı')), self.assertRaises(ValueError):
+            self.call(f'comments/{ct(self.topic)}/{self.topic.pk}/', {'body': 'x'}, user=self.bob)
+
+    def test_login_ignores_stale_token(self):
+        # şifre sitede değişince telefondaki eski jeton geçersiz; girişte gönderilse de doğru şifre kabul edilmeli
+        User.objects.create_user('ayse', 'ayse@example.com', 'uzun-bir-sifre-9', first_name='A', last_name='S')
+        r = self.call('login/', {'username': 'ayse', 'password': 'uzun-bir-sifre-9'}, HTTP_AUTHORIZATION='Bearer eski')
+        self.assertEqual(r.status_code, 200)
 
 
 class TopicTests(ApiTestCase):
@@ -90,7 +105,8 @@ class TopicTests(ApiTestCase):
 
     def test_detail_masks_hidden_topic_and_lists_actions(self):
         d = self.call(f'topics/{self.topic.pk}/', user=self.bob).json()
-        self.assertEqual([a for a, _ in d['actions']], ['open', 'request', 'edit', 'close', 'delete'])
+        self.assertEqual([a for a, _ in d['actions']], ['open', 'request'])
+        self.assertEqual([a for a, _ in d['more_actions']], ['edit', 'close', 'delete'])  # "Diğer öneriler"
         self.assertEqual((d['why'], d['can_report']), ('', True))
         self.assertEqual(self.call(f'topics/{self.topic.pk}/').json()['actions'], [])  # giriş yok
         Topic.objects.filter(pk=self.topic.pk).update(is_hidden=True)
@@ -100,6 +116,11 @@ class TopicTests(ApiTestCase):
         self.assertEqual((d['title'], d['hidden']), ('Konu', True))
         Topic.objects.filter(pk=self.topic.pk).update(is_deleted=True)
         self.assertEqual(self.call(f'topics/{self.topic.pk}/').status_code, 404)
+
+    def test_closed_topic_offers_only_undo(self):
+        Topic.objects.filter(pk=self.topic.pk).update(is_closed=True)
+        d = self.call(f'topics/{self.topic.pk}/', user=self.bob).json()
+        self.assertEqual((d['actions'], d['more_actions']), ([['undo', 'Yeniden açmayı öner']], []))
 
     def test_vote_uses_site_rules(self):
         url = f'topics/{self.topic.pk}/vote/'
@@ -209,6 +230,9 @@ class ProposalTests(ApiTestCase):
         r = self.call(url, {'new_title': 'Yeni ad', 'new_description': 'Yeni metin'}, user=self.bob)
         self.assertIn('aynısı oylamada', r.json()['errors']['__all__'][0])  # kural 8, modelin clean()'i
         self.assertEqual(self.call('proposals/new/undo/', user=self.bob).status_code, 404)  # konu gerekli
+        labels = {slug: self.call(f'proposals/new/{slug}/{self.topic.pk}/', user=self.bob).json()['target_label']
+                  for slug in ('open', 'edit')}
+        self.assertEqual(labels, {'open': 'Üst konu', 'edit': 'Konu'})  # hedef alanın kendi etiketi
 
     def test_hidden_proposal_is_masked(self):
         p = TopicCloseProposal.objects.create(proposer=self.alice, topic=self.topic)

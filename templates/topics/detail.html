@@ -9,7 +9,7 @@
   {% include "topics/_pending.html" with t=topic %}</h1>
 <div class="meta">
   {% url 'topic_vote' topic.pk as url %}{% include "_vote.html" with score=topic.score mine=my_vote why=vote_why %}
-  <span>{{ topic.author|default:"silinmiş üye" }}</span> <span>{{ topic.created_at|date:"j F Y H:i" }}</span> {% mod_links topic %}
+  <span>{{ topic.author|default:"silinmiş üye" }}</span> <span>{{ topic.created_at|when }}</span> {% mod_links topic %}
 </div>
 {% if masked %}
   <p class="notice">Bu konu moderasyonla gizlendi.</p>
@@ -17,22 +17,16 @@
   {% if topic.is_hidden %}<p class="notice">Bu konu moderasyonla gizlendi; metnini yalnızca sen ve yöneticiler görüyor.</p>{% endif %}
   {{ topic.description|linebreaks }}
 {% endif %}
-{% if user.is_authenticated %}
+{% if links or more_links %}
+  {# topics.views.proposal_links: hangi önerinin açılabileceğini tiplerin kendi denetimi söyler; API de aynı listeyi verir #}
   {# div: <details> <p> içine konamaz, tarayıcı paragrafı erken kapatır #}
   <div class="links">
-    {% if topic.is_open %}
-      {# sık kullanılanlar önde; konunun kendisini değiştiren öneriler açılır kutuda (JS gerekmez) #}
-      {% if not topic.parent %}<a href="{% url 'proposal_new' 'open' topic.pk %}">Alt konu öner</a>{% endif %}
-      <a href="{% url 'proposal_new' 'request' topic.pk %}">İstek aç</a>
+    {% for slug, label in links %}<a href="{% url 'proposal_new' slug topic.pk %}">{{ label }}</a>{% endfor %}
+    {% if more_links %}
+      {# konunun kendisini değiştiren öneriler açılır kutuda (JS gerekmez) #}
       <details class="more"><summary>Diğer öneriler <span class="caret" aria-hidden="true">▾</span></summary>
-        <span class="links">
-          <a href="{% url 'proposal_new' 'edit' topic.pk %}">Düzenleme öner</a>
-          <a href="{% url 'proposal_new' 'close' topic.pk %}">Kapatma öner</a>
-          <a href="{% url 'proposal_new' 'delete' topic.pk %}">Silme öner</a>
-        </span>
+        <span class="links">{% for slug, label in more_links %}<a href="{% url 'proposal_new' slug topic.pk %}">{{ label }}</a>{% endfor %}</span>
       </details>
-    {% elif topic.is_closed and not topic.is_hidden %}
-      <a href="{% url 'proposal_new' 'undo' topic.pk %}">Yeniden açmayı öner</a>
     {% endif %}
   </div>
 {% endif %}

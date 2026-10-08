@@ -119,10 +119,6 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {'default': database(os.environ.get('DATABASE_URL'))}
 
-# Veritabanı önbelleği: gunicorn'un bütün süreçleri aynı önbelleği görür (LocMemCache süreç başınaydı,
-# moderasyonun cache.delete()'i yalnızca kendi sürecini temizliyordu). Tablo: manage.py createcachetable
-CACHES = {'default': {'BACKEND': 'django.core.cache.backends.db.DatabaseCache', 'LOCATION': 'django_cache'}}
-
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -201,7 +197,8 @@ SITE = {
     'email': required('CONTACT_EMAIL', 'iletisim@example.com'),  # hukuki bildirim ve KVKK başvurusu
 }
 
-# Forum kuralları (CLAUDE.md > Kurallar). Kural sayıları yalnızca burada tutulur.
+# Forum kuralları (CLAUDE.md > Kurallar). Kural sayıları yalnızca burada tutulur; açılışta denetlenir
+# (voting/checks.py: yanlış girilen değer runserver ve check --deploy'da hata verir, sayfada 500 değil).
 FORUM = {
     'VOTE_WEIGHT': {'A': 1, 'B': 10},  # kural 2: rol -> karar oylamasındaki ağırlık
     'MIN_ACCOUNT_AGE_DAYS': 7,  # kural 1: oy hakkı için hesap yaşı
@@ -222,7 +219,6 @@ FORUM = {
     'COMMENTS_PER_PAGE': 20,  # ana yorum; yanıtlar ana yorumlarıyla aynı sayfada
     'PANEL_VOTING': 10,  # ana sayfa panelinde en fazla oylamadaki öneri
     'PANEL_DISCUSSION': 5,  # panelde en fazla tartışmadaki istek
-    'PANEL_CACHE_SECONDS': 60,  # panelin herkes için aynı kısmı; 0 = önbellek yok
     'COMMENT_RATE': (5, 10),  # hız sınırı: 10 dakikada en fazla 5 yorum
     'MOD_NOTE_MAX_LENGTH': 200,  # moderasyon işleminin herkese açık notu; değişirse makemigrations
     'BAN_DAYS': (1, 7, 30, 365),  # seçilebilen engel süreleri (gün); kalıcı engel yok, sahte hesap kapatılır

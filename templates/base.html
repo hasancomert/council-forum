@@ -35,7 +35,7 @@
     <ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>
   {% endif %}
   {% if user.is_banned %}
-    <p class="notice error">Engelin {{ user.banned_until|date:"j F Y H:i" }} tarihine kadar sürüyor:
+    <p class="notice error">Engelin {{ user.banned_until|when }} tarihine kadar sürüyor:
       okuyabilirsin, ama yazamaz, oy veremez ve öneri açamazsın.</p>
   {% endif %}
   <div class="layout">

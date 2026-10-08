@@ -14,7 +14,6 @@ main() {
 	app .venv/bin/python -m pip install --quiet -r requirements.txt
 	app .venv/bin/python manage.py check --deploy --fail-level WARNING
 	app .venv/bin/python manage.py migrate --noinput
-	app .venv/bin/python manage.py createcachetable
 	app .venv/bin/python manage.py collectstatic --noinput --verbosity 0
 	systemctl restart forum
 	echo "Yayında: $(app git describe --tags --always)"
