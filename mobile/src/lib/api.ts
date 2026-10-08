@@ -67,12 +67,13 @@ export async function api<T>(path: string, body?: object): Promise<T> {
         'telefon ve bilgisayar aynı ağda mı?',
     );
   }
-  const data = await r.json().catch(() => ({}));
+  const data = await r.json().catch(() => null); // JSON değilse (ör. ağ geçidinin HTML sayfası) null
   if (r.status === 401 && token) {
     await setToken(null);
     sessionEnded();
   }
-  if (!r.ok) throw new ApiError(data.error ?? `Sunucu hatası (${r.status})`, r.status, data.errors);
+  if (!r.ok) throw new ApiError(data?.error ?? `Sunucu hatası (${r.status})`, r.status, data?.errors);
+  if (data === null) throw new ApiError('Sunucudan beklenmeyen bir yanıt geldi.', r.status);
   return data as T;
 }
 
@@ -139,7 +140,8 @@ export type Topic = {
   parent: Ref | null;
   pending: Pending[];
   can_report: boolean;
-  actions: [string, string][]; // [öneri tipi, bağlantı adı]
+  actions: [string, string][]; // [öneri tipi, bağlantı adı]: öndekiler
+  more_actions: [string, string][]; // "Diğer öneriler"in içindekiler
   subs: TopicRow[];
   n_subs: { open: number; closed: number } | null;
 };
@@ -210,4 +212,4 @@ export type Field = {
   initial: string;
 };
 
-export type ProposalForm = { title: string; target: string | null; fields: Field[] };
+export type ProposalForm = { title: string; target: string | null; target_label: string; fields: Field[] };

@@ -1,5 +1,5 @@
 // ▲ puan ▼ (konu ve yorum; templates/_vote.html) ve şikayet.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { api, errorText } from '@/lib/api';
@@ -16,6 +16,7 @@ export function VoteButtons({ path, score, mine, why }: Props) {
   const [state, setState] = useState({ score, mine });
   const [prev, setPrev] = useState({ score, mine });
   const [hint, setHint] = useState('');
+  const busy = useRef(false); // istek sürerken ikinci dokunuş yok: sunucu aynı tuşa ikinci basışı geri alma sayar
   if (prev.score !== score || prev.mine !== mine) {
     // sayfa yenilendi: sunucunun değeri geçerli (React'in "prop değişince state'i ayarla" kalıbı)
     setPrev({ score, mine });
@@ -24,11 +25,15 @@ export function VoteButtons({ path, score, mine, why }: Props) {
 
   const vote = async (value: 1 | -1) => {
     if (why) return setHint(why);
+    if (busy.current) return;
+    busy.current = true;
     try {
       setState(await api<{ score: number; mine: number }>(path, { value }));
       setHint('');
     } catch (e) {
       setHint(errorText(e));
+    } finally {
+      busy.current = false;
     }
   };
 

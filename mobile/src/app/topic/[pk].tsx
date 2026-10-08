@@ -10,20 +10,19 @@ import { api, errorText, openSite, type Topic } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { size, themed } from '@/lib/theme';
 
-// Sık kullanılanlar önde; konunun kendisini değiştiren öneriler "Diğer öneriler"de (topics/detail.html).
-const MORE = ['edit', 'close', 'delete'];
-
+// Sık kullanılanlar önde; konunun kendisini değiştiren öneriler "Diğer öneriler"de. Listeler sunucudan
+// (topics.views.proposal_links): sitedeki bağlantılarla aynı, yeni öneri tipi kendiliğinden gelir.
 function Actions({ t }: { t: Topic }) {
   const s = useStyles();
   const [more, setMore] = useState(false);
   const link = ([slug, label]: [string, string]) => (
     <Button key={slug} kind="chip" title={label} onPress={() => router.push(`/new/${slug}?topic=${t.pk}`)} />
   );
-  const others = t.actions.filter(([slug]) => MORE.includes(slug));
+  const others = t.more_actions;
   return (
     <View style={s.actions}>
       <Row>
-        {t.actions.filter(([slug]) => !MORE.includes(slug)).map(link)}
+        {t.actions.map(link)}
         {others.length > 0 && (
           <Button kind="chip" title={`Diğer öneriler ${more ? '▴' : '▾'}`} pressed={more} onPress={() => setMore(!more)} />
         )}
@@ -75,7 +74,7 @@ function TopicHeader({ t }: { t: Topic }) {
           ) : null}
         </>
       )}
-      {t.actions.length > 0 && <Actions t={t} />}
+      {t.actions.length + t.more_actions.length > 0 && <Actions t={t} />}
       {n && (
         <View>
           <Text style={s.h2}>Alt konular</Text>

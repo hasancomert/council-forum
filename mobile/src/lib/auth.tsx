@@ -20,9 +20,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState(0);
   const changed = () => setSession((n) => n + 1);
 
-  // sabit fonksiyon: ekranlar odak efektinde çağırır (her çizimde yenisi olsa efekt döngüye girerdi)
+  // sabit fonksiyon: ekranlar odak efektinde çağırır (her çizimde yenisi olsa efekt döngüye girerdi).
+  // Yalnızca jeton geçersizse (401) oturum düşer, onu da api() yapar (onSessionEnd); ağ hatasında eski bilgi kalır.
+  // Yanıt gelene kadar çıkış yapıldıysa (jeton yok) eski kullanıcı geri yazılmaz.
   const refresh = useCallback(async () => {
-    if (hasToken()) setMe(await api<Me>('me/').catch(() => null)); // 401'de api() jetonu siler
+    if (!hasToken()) return;
+    try {
+      const fresh = await api<Me>('me/');
+      if (hasToken()) setMe(fresh);
+    } catch {
+      // sunucuya ulaşılamadı: ekranlar kendi hatasını gösterir
+    }
   }, []);
 
   useEffect(() => {

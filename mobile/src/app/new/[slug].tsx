@@ -91,7 +91,7 @@ export default function NewProposal() {
         <Stack.Screen options={{ title: form.title }} />
         {form.target && (
           <Text style={s.text}>
-            {slug === 'open' ? 'Üst konu' : 'Konu'}: <Text style={s.strong}>{form.target}</Text>
+            {form.target_label}: <Text style={s.strong}>{form.target}</Text>
           </Text>
         )}
         {errors.__all__ && <Notice tone="error">{errors.__all__.join(' ')}</Notice>}
