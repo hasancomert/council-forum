@@ -1,3 +1,4 @@
+from datetime import timedelta
 from unittest import mock
 
 from django.conf import settings
@@ -8,6 +9,7 @@ from django.utils import timezone
 from accounts.models import User
 from accounts.testing import make_user
 from comments.models import Comment
+from config.templatetags import when
 from topics.models import Topic
 from voting.models import BaseProposal, RequestProposal, TopicCloseProposal, Vote
 
@@ -43,6 +45,17 @@ class AuthTests(ApiTestCase):
         self.assertEqual(r.json()['me']['username'], 'ayse')
         me = self.call('me/', HTTP_AUTHORIZATION=f"Bearer {r.json()['token']}")
         self.assertEqual((me.status_code, me.json()['role_label']), (200, 'Üye'))
+        self.assertIsNotNone(User.objects.get(username='ayse').last_login)  # sitedeki girişle aynı kayıt
+
+    def test_me_dates_and_ban(self):
+        joined = self.bob.date_joined
+        d = self.call('me/', user=self.bob).json()
+        days = settings.FORUM['MIN_ACCOUNT_AGE_DAYS']
+        self.assertEqual((d['joined'], d['vote_from'], d['banned_until']),
+                         (when(joined, 'j F Y'), when(joined + timedelta(days=days)), None))
+        until = timezone.now() + timedelta(days=1)
+        User.objects.filter(pk=self.bob.pk).update(banned_until=until)
+        self.assertEqual(self.call('me/', user=self.bob).json()['banned_until'], when(until))
 
     def test_unverified_account_cannot_log_in(self):
         User.objects.create_user('yeni', 'yeni@example.com', 'uzun-bir-sifre-9', is_active=False)
@@ -147,6 +160,7 @@ class CommentTests(ApiTestCase):
         self.assertEqual(self.call(self.url(), {'body': 'x'}).status_code, 401)
         d = self.call(self.url(), user=self.alice).json()
         self.assertEqual((d['count'], d['can_post'], len(d['results']), d['ct']), (3, True, 1, ct(Comment)))
+        self.assertEqual((d['sort'], self.call(self.url() + '?sort=new').json()['sort']), ('top', 'new'))
         c = d['results'][0]
         self.assertEqual((c['body'], c['own'], c['can_report']), ('İlk', False, True))
         self.assertEqual([r['body'] for r in c['replies']], ['Yanıt', 'Yanıta yanıt'])

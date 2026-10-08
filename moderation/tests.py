@@ -355,14 +355,38 @@ class IntentTests(ModTestCase):
     def test_log_filter_survives_nul(self):  # PostgreSQL NUL karakterli sorguyu reddeder (500 olurdu)
         self.assertEqual(self.client.get('/mod/log/?user=%00').status_code, 200)
 
+    def test_log_filters_by_reason_and_pages(self):
+        for reason in ('troll', 'abuse'):
+            ModAction.objects.create(moderator=self.mod, user=self.bob, kind='ban', reason=reason, note='.')
+        self.assertEqual([a.reason for a in self.client.get('/mod/log/?reason=abuse').context['page']], ['abuse'])
+        with override_settings(FORUM={**settings.FORUM, 'MOD_PER_PAGE': 1}):
+            self.assertEqual(self.client.get('/mod/log/').context['page'].paginator.num_pages, 2)
+
+    def test_unverified_account_is_not_reopened_by_moderation(self):
+        unverified = make_user('dogrulanmamis')
+        User.objects.filter(pk=unverified.pk).update(is_active=False)
+        self.login(self.mod)
+        self.assertEqual(self.client.get(f'/mod/user/{unverified.pk}/').context['kinds'], [])  # e-posta bağlantısıyla açılır
+
+    def test_content_links_by_role(self):
+        for user, report, moderate in ((self.bob, True, False), (self.mod, False, True), (None, False, False)):
+            with self.subTest(user and user.username):
+                self.login(user)
+                html = self.client.get(self.topic.get_absolute_url()).content.decode()
+                self.assertEqual(('class="report"' in html, f'href="{mod_url(self.topic)}"' in html), (report, moderate))
+
 
 class AdminPrivacyTests(TestCase):
     """Kurucu da kimin ne oy verdiğini ve kimin şikayet ettiğini görmez (kural 6, 10. adım)."""
 
     def setUp(self):
-        root = make_user('kurucu')
-        User.objects.filter(pk=root.pk).update(is_staff=True, is_superuser=True)
-        self.client.force_login(root)
+        self.root = make_user('kurucu')
+        User.objects.filter(pk=self.root.pk).update(is_staff=True, is_superuser=True)
+        self.client.force_login(self.root)
+
+    def test_topic_added_in_admin_belongs_to_founder(self):  # kural 9: ilk konuları kurucu açar
+        self.client.post('/admin/topics/topic/add/', {'title': 'Kuruluş konusu', 'description': ''})
+        self.assertEqual(Topic.objects.get(title='Kuruluş konusu').author, self.root)
 
     def test_members_cannot_be_deleted_in_admin(self):
         # silme onay sayfası üyenin oylarını ("…: yes") ve şikayetlerini listeler; CASCADE bitmiş sonucu değiştirirdi

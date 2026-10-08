@@ -38,6 +38,9 @@ class SignupTests(TestCase):
         self.assertTrue(user.is_active)
         self.assertEqual(self.client.get(link).status_code, 400)  # bağlantı tek kullanımlık
 
+    def test_broken_activation_link_is_400(self, _):
+        self.assertEqual(self.client.get('/accounts/activate/!!!/x/').status_code, 400)  # 500 değil
+
     def test_terms_required_and_acceptance_time_saved(self, _):
         self.assertContains(self.signup(terms=''), 'Bu alan zorunludur')
         self.assertFalse(User.objects.exists())

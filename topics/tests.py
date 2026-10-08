@@ -251,6 +251,10 @@ class RankingTests(TestCase):
         self.assertEqual(Topic.objects.ranked('popular').get(pk=t.pk).heat, 4)  # 3 × yorum + 1 × oy
         c.soft_delete()
         self.assertEqual(Topic.objects.ranked('popular').get(pk=t.pk).heat, 0)
+        hidden = Comment.objects.create(target=t, author=self.alice, body='y')
+        CommentVote.cast(hidden, self.bob, 1)
+        hidden.set_hidden(True)
+        self.assertEqual(Topic.objects.ranked('popular').get(pk=t.pk).heat, 0)  # gizli yorum da oyu da sayılmaz
 
     def test_same_time_topics_keep_a_stable_order(self):  # sayfalamada tekrar ya da atlama olmasın
         for i in range(3):

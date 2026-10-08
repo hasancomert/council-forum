@@ -18,8 +18,8 @@ from topics.views import proposal_links
 from .checks import forum_settings
 from .models import (
     PROPOSAL_MODELS, PROPOSALS, BaseProposal, ExpertProposal, RequestProposal, TopicCloseProposal,
-    TopicDeleteProposal, TopicEditProposal, TopicOpenProposal, TopicProposal, TopicUndoProposal, Vote, mark_voted,
-    open_proposal_count, required_quorum,
+    TopicDeleteProposal, TopicEditProposal, TopicOpenProposal, TopicProposal, TopicUndoProposal, Vote,
+    active_member_count, mark_voted, open_proposal_count, required_quorum,
 )
 
 S = BaseProposal.Status
@@ -365,6 +365,7 @@ class CleanTests(VotingTestCase):
         self.assertInvalid(ExpertProposal(proposer=self.proposer, target_user=other, action=grant), 'kendi adına')
         ExpertProposal(proposer=self.proposer, target_user=self.proposer, action=grant).clean()
         self.assertInvalid(ExpertProposal(proposer=self.proposer, target_user=other, action='revoke'), 'bilirkişi değil')
+        self.assertInvalid(ExpertProposal(proposer=self.expert, target_user=self.expert, action=grant), 'zaten bilirkişi')
         ExpertProposal(proposer=self.proposer, target_user=self.expert, action='revoke').clean()
 
 
@@ -462,6 +463,14 @@ class LifecycleTests(VotingTestCase):
         ok.refresh_from_db()
         self.assertEqual(ok.status, S.REJECTED)  # öteki yine sonuçlandı (yeter sayı yok)
         self.assertIn(f'open/{bad.pk}', err.getvalue())
+
+    def test_active_members_count_voters_within_window(self):  # kural 3: son 30 gün, oy veren de aktif
+        p = TopicCloseProposal.objects.create(proposer=self.proposer, topic=self.topic)  # konuyu açan: öneren
+        Vote.cast(proposal=p, voter=self.voters[0], choice=YES)
+        Vote.cast(proposal=p, voter=self.voters[1], choice=YES)
+        Vote.objects.filter(voter=self.voters[1]).update(
+            voted_at=timezone.now() - timedelta(days=settings.FORUM['ACTIVE_DAYS'] + 1))
+        self.assertEqual(active_member_count(), 2)  # öneren (konu) + voters[0]; 31 günlük oy sayılmaz
 
     def test_undo_not_offered_under_hidden_parent(self):
         Topic.objects.filter(pk=self.topic.pk).update(is_hidden=True)

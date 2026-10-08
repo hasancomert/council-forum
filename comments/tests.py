@@ -327,6 +327,12 @@ class ConcurrencyTests(CommentTestCase):
         self.assertEqual(c.body, 'Yeni')
         self.assertIsNotNone(c.edited_at)
 
+    def test_expert_comment_vote_counts_one(self):
+        c = self.comment()
+        self.assertEqual(CommentVote.cast(c, make_user('uzman', role='B'), 1), 1)
+        c.refresh_from_db()
+        self.assertEqual(c.score, 1)
+
     def test_boolean_is_not_a_vote(self):  # JSON'daki true, Python'da 1'e eşit: PostgreSQL'de puan + boolean hatası
         with self.assertRaisesMessage(ValueError, 'Geçersiz oy'):
             CommentVote.cast(self.comment(), self.bob, True)

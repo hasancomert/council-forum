@@ -154,6 +154,7 @@ class UtilsTests(SimpleTestCase):
         self.assertEqual((ago(None), left(None)), ('', ''))
         self.assertEqual(left(now + timedelta(seconds=30)), "1 dk'dan az")
         self.assertEqual(ago(now - timedelta(seconds=30)), 'az önce')
+        self.assertEqual(ago(now - timedelta(seconds=90)), '1 dk önce')
 
 
 class DesignTests(SimpleTestCase):
