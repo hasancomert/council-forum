@@ -63,7 +63,7 @@ Slayttaki üç katmanlı yapı, model metriği yerine **kural ve sistem metriği
 | --- | --- | --- |
 | İş | Son 30 günde aktif üye sayısı; yeter sayıya ulaşan önerilerin oranı | `active_member_count()`; sonuçlanan önerilerde `quorum` alanı |
 | Ürün / kullanıcı | Öneri başına katılım (turnout); "Oy ver" rozeti gösterilen üyelerden oy verenlerin oranı; şikayetin işlenme süresi | Panel ve öneri sayfası; `Report` ile `ModAction` tarihleri |
-| Sistem | Kuralların doğruluğu: 133 testin hepsi geçiyor; sayfa başına veritabanı sorgu sayısı sabit | `python manage.py test`; sorgu sayan testler |
+| Sistem | Kuralların doğruluğu: 191 testin hepsi geçiyor, mutasyon skoru (bozulan kodu yakalama oranı) ölçülüyor; sayfa başına veritabanı sorgu sayısı sabit | `python manage.py test`; sorgu sayan testler; `TASARIM.md` 6 |
 | Koruyucu (guardrail) | Moderasyonla gizlenen içerik oranı (sansür artmasın); iptal edilen ve "Uygulanamadı" öneri oranı; B statüsündeki üye oranı | Moderasyon kaydı, öneri durumları, `User.role` |
 
 **Goodhart yasası** burada da geçerli. "Katılımı artırın" tek hedef olursa, tartışmayı okumadan tek tıkla oy veren
@@ -155,10 +155,11 @@ Sağ üst köşedekilere bugünden önlem yazıldı.
 - **İnsan döngüde:** Moderasyon tamamen insanda, kararlar toplulukta. YZ eklenirse "emekle" aşamasından başlar:
   model önerir, yönetici onaylar.
 - **ML sistemlerinin dört gereksinimi, bu sisteme uyarlanmış:**
-  - *Güvenilirlik:* koşullu UPDATE, 133 test.
-  - *Ölçeklenebilirlik:* sabit sorgu sayısı, ortak önbellek, PostgreSQL.
+  - *Güvenilirlik:* koşullu UPDATE, 191 test, kural sayılarının açılışta denetlenmesi.
+  - *Ölçeklenebilirlik:* sabit sorgu sayısı, PostgreSQL. (Panel önbelleği ölçülüp gereksiz bulundu, kaldırıldı.)
   - *Sürdürülebilirlik:* kural sayıları ayarda, `CLAUDE.md`, testler.
-  - *Uyarlanabilirlik:* yeni öneri türü yalnızca bir sınıf eklenerek yazılır (`TASARIM.md`).
+  - *Uyarlanabilirlik:* yeni öneri türü `voting/models.py`'de bir alt sınıftır (+ göç): kayıt, form, admin, panel,
+    öneri sayfası, API ve konu sayfasındaki bağlantı kendiliğinden gelir (`TASARIM.md` 2, Açık/kapalı).
 - **Son kilometre:** Demo hazır. Gerçek ürün için yayına alma, hukuki kontrol ve iki telefonda deneme hâlâ açık.
 - **Bakım:** Kurallar değişince yalnızca `FORUM` değişir. Yeni kural türü için `TASARIM.md`'deki genişleme
   noktaları kullanılır.
@@ -187,9 +188,9 @@ Sağ üst köşedekilere bugünden önlem yazıldı.
 | İOG-1 Performans | Sayfa başına sorgu sayısı veri miktarından bağımsız | Alt sorgular, `count_of()`; sorgu sayan testler |
 | İOG-2 Güvenlik | CSRF, CSP, HTTPS, imzalı jeton, açık yönlendirme yok | `config/settings.py`, `config/utils.back()`, `api/views.py` |
 | İOG-3 Gizlilik | Kimin ne oy verdiği gizli; KVKK | Oy tabloları admin'de yok; `User.anonymize()` |
-| İOG-4 Erişilebilirlik | Dokunma hedefi ≥ 44 px, kontrast ≥ 5,6:1, 360 px'te yatay kaydırma yok | `static/css/site.css`, `config/tests.py` |
-| İOG-5 Taşınabilirlik | SQLite (geliştirme) ve PostgreSQL (yayın) | `DATABASE_URL`; testler iki veritabanında |
-| İOG-6 Sürdürülebilirlik | Kural sayıları tek yerde; ek paket yok; testler | `FORUM`, `requirements.txt` |
+| İOG-4 Erişilebilirlik | Dokunma hedefi ≥ 44 px, kontrast ≥ 5,6:1, 360 px'te yatay kaydırma yok | `static/css/site.css`; kontrast `config/tests.py` `DesignTests` (iki tema) |
+| İOG-5 Taşınabilirlik | SQLite (geliştirme) ve PostgreSQL (yayın) | `DATABASE_URL`; 11. adımın takımı iki veritabanında geçti |
+| İOG-6 Sürdürülebilirlik | Kural sayıları tek yerde ve açılışta denetli; ek paket yok; testler | `FORUM`, `voting/checks.py`, `requirements.txt` |
 | İOG-7 Kullanılabilirlik | Site PWA; Android ve iPhone'da uygulama | `templates/pwa/`, `mobile/` |
 
 ## 12. YZ kullanım beyanı
@@ -210,3 +211,5 @@ Dersin teslim kuralı gereği ("YZ kullandıysanız her teslimde YZ kullanım be
     gunicorn, psycopg ve WhiteNoise var. Mobilde Expo şablonunun paketleri ve `expo-secure-store` kullanılıyor;
     sürümler SDK'nın uyumlu sürüm listesinden alındı.
   - YZ'nin yazdığı testler de gözden geçirildi.
+  - Alt-ajanların her hata iddiası ayrıca bir testle yeniden üretildi; üretilemeyen "hata" sayılmadı. Testlerin
+    hatayı yakalama gücü mutasyon testiyle ölçüldü (`TASARIM.md` 1 ve 6).

@@ -31,9 +31,27 @@ Tarayıcı (site, PWA)            ── HTML sayfalar, oturum çerezi + CSRF �
 | 4. Kabul: ağırlıklı çoğunluk, eşitlikte ret | `BaseProposal._accepted()`, `finalize()` |
 | 5. Süreler: 2 gün; istekte 3 + 3 gün | `BaseProposal.save()`, `RequestProposal.save()` |
 | 6. Gizlilik: sürerken yalnızca katılım, oy değiştirilebilir | `results_visible`, `Vote.cast()` (upsert); API'de `turnout` / `result` |
-| 7. Kapatma/silme: kapalı görünür, silinen gizlenir | `Topic.is_open`, `TopicQuerySet.visible()`, `apply()` metotları |
-| 8. Kişi başı 3 açık öneri, reddedilen 30 gün açılamaz | `BaseProposal.clean()`, `open_proposal_count()`, `is_duplicate()` |
+| 7. Kapatma/silme: kapalı görünür, silinen gizlenir | `Topic.is_open`, `TopicQuerySet.visible()`, `apply()` metotları → `Topic.change()` |
+| 8. Kişi başı 3 açık öneri, reddedilen 30 gün açılamaz | `BaseProposal.clean()`, `open_proposal_count()` (`running()`), `is_duplicate()` |
 | 9. İlk konuları kurucu açar | `FORUM['FOUNDING']`, admin |
+
+## Yazılım mühendisliği (12. adım)
+
+- **Analiz** (`ANALIZ.md`): problem çerçeveleme hunisi, "YZ gerekli mi?" karar ağacı (kararlar kural, YZ değil),
+  başarı metrikleri, temel çizgi merdiveni, ön-otopsi, paydaşlar, izlenebilir gereksinimler (her biri kod + test).
+- **Tasarım** (`TASARIM.md`): SOLID tablosu, desen haritası, bilerek uygulanmayan desenler, anti-desen denetimi.
+  Gösterilecek üç örnek:
+  - **Template Method:** `BaseProposal.finalize()`. Akış sabit, `apply()` gibi adımlar tipe göre.
+  - **Registry:** öneri tipleri kendini kaydeder. Yeni tip yalnızca bir alt sınıftır; URL, form, admin, panel, API
+    ve konu sayfasındaki bağlantı kendiliğinden gelir (açık/kapalı ilkesi).
+  - **Command:** öneri, kuyrukta bekleyen bir işlemdir. Sonra `apply()` ile uygulanır; geri alma da bir öneridir.
+- **İnceleme:** 12 alt ajan her ilkeyi ayrı inceledi. Bulgular testle doğrulandı, 28 gerçek hata düzeltildi.
+  Örnekler:
+  - Admin'de üye silme sayfası oyları gösteriyordu (kural 6).
+  - Taze kurulumda ana sayfa 500 veriyordu (erken optimizasyon olan önbellek kaldırıldı).
+  - Yerelde süresi dolan öneri sonuçlanmıyordu.
+- **Testler:** 191 test. Her bileşene sahte nesneyle birim testi var (ör. sahte `urlopen`, sahte kullanıcı).
+  Mutasyon testi, testlerin bilerek bozulmuş kodu ne oranda yakaladığını ölçüyor (`TASARIM.md` 6).
 
 ## Demo hazırlığı
 
@@ -42,8 +60,11 @@ Tarayıcı (site, PWA)            ── HTML sayfalar, oturum çerezi + CSRF �
 - En az iki hesap, **7 günden eski** (kural 1): admin → Kullanıcılar → hesap → "Önemli tarihler" → katılma
   tarihini geri al. Yeni kayıtta doğrulama bağlantısı e-posta yerine runserver terminaline yazılır.
 - Ağırlığı göstermek için bir hesabı admin'den B yap (kuruluş sürerken, `FOUNDING=True`).
+- Sunumda `.env`'e rastgele bir `SECRET_KEY` yaz (hotspot'taki herkes sunucuya erişebilir; depodaki geliştirme
+  anahtarı herkesçe bilinir):
+  `python -c "from django.core.management.utils import get_random_secret_key as k; print(k())"`
 - Sonuç çubuğunu göstermek için önceden bitmiş bir öneri olsun. Yalnızca demo veritabanında, bir öneriyi hemen
-  bitirmek için (sayfa açılınca sonuçlanır):
+  bitirmek için (ana sayfa ya da öneri sayfası açılınca sonuçlanır, zamanlayıcı gerekmez):
   ```powershell
   python manage.py shell -c "from django.utils import timezone; from voting.models import TopicCloseProposal as P; P.objects.filter(pk=1).update(voting_ends_at=timezone.now())"
   ```
@@ -68,3 +89,8 @@ Tarayıcı (site, PWA)            ── HTML sayfalar, oturum çerezi + CSRF �
 - **Neden Expo?** Tek TypeScript koduyla Android ve iPhone; Expo Go ile derleme yapmadan telefonda çalışır.
 - **Güvenlik?** Jeton imzalı ve süreli (30 gün), şifre değişince geçersiz; gizli içerik ve oy gizliliği sitedekiyle
   aynı fonksiyonlardan geçer.
+- **Hangi tasarım desenleri, neden?** Bkz. `TASARIM.md` 3. Desen ihtiyaç olunca kondu. State, Observer sinyalleri
+  ve servis katmanı bilerek yok (bölüm 4). Python'da Strategy, Singleton ve Iterator'ın ayrı sınıfa gerek duymadığı da
+  orada.
+- **Testler gerçekten hata yakalıyor mu?** Mutasyon testi: kod bilerek bozuldu (ör. "eşitlikte kabul",
+  "silme uygulanmıyor"); bozulanların çoğunu testler yakaladı (`TASARIM.md` 6).
