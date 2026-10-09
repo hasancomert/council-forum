@@ -1,5 +1,6 @@
 /* Forum'un tek stil dosyası. Renk, boşluk ve yazı ölçüleri değişkenlerde; koyu tema yalnızca renkleri
-   değiştirir. Framework ve build adımı yok. Metin/zemin çiftleri en az 4.5:1 kontrastlı (WCAG AA). */
+   değiştirir. Framework ve build adımı yok. Metin/zemin çiftleri en az 5.6:1 kontrastlı (WCAG AA 4.5:1;
+   config/tests.py DesignTests denetler). */
 
 :root {
   color-scheme: light dark;
@@ -206,7 +207,7 @@ button.link { min-height: auto; border: 0; background: none; color: var(--accent
 .links details[open] > .links { margin-top: var(--s2); }
 .caret { display: inline-block; transition: transform var(--ease); }
 details[open] > summary .caret { transform: rotate(180deg); }
-.opts strong, .chip[aria-current] { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
+.opts strong { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
 .opts, .links, .pages { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
 .opts { margin-bottom: var(--s3); color: var(--muted); font-size: var(--fs-sm); }
 .pages { justify-content: center; margin: var(--s3) 0; }

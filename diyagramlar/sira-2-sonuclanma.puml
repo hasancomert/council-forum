@@ -1,0 +1,87 @@
+@startuml
+!include stil.iuml
+skinparam style strictuml
+autonumber
+hide footbox
+title Sıralama (sequence) diyagramı 2: süresi dolan önerinin sonuçlanması ve uygulanması
+
+actor "Zamanlayıcı\n(systemd, 15 dk)" as T
+control "finalize_proposals\n(handle())" as Cmd
+participant "ProposalQuerySet" as QS
+entity "p: TopicCloseProposal" as P
+participant "voting.models" as M
+entity "topic: Topic" as Top
+database "Veritabanı" as DB
+
+T -> Cmd : python manage.py finalize_proposals
+activate Cmd
+loop her öneri tipi (PROPOSAL_MODELS)
+  Cmd -> QS : model.objects.due()
+  activate QS
+  QS -> DB : SELECT (VOTING ve süresi dolmuş)\nya da ACCEPTED
+  DB --> QS : öneriler
+  QS --> Cmd : [p, ...]
+  deactivate QS
+  loop her öneri p
+    Cmd -> P : finalize()
+    activate P
+    opt status = VOTING ve süre doldu
+      P -> P : tally()
+      activate P
+      P -> DB : SUM(weight) evet / hayır, COUNT
+      DB --> P : {yes: 22, no: 13, count: 8}\n(2 B + 2 A evet, 1 B + 3 A hayır)
+      deactivate P
+      P -> M : required_quorum()
+      activate M
+      M -> DB : son 30 günde aktif üye sayısı\n(karar oyu, konu, yorum)
+      DB --> M : 64
+      M --> P : max(5, ⌈64 × %10⌉) = 7
+      deactivate M
+      P -> P : _accepted(t): yes > no
+      note right of P
+        count ≥ quorum ve kabul: ACCEPTED,
+        yoksa REJECTED (eşitlikte ret, kural 4).
+        ExpertProposal bu kancayı ezer: 2/3 evet.
+      end note
+      P -> DB : UPDATE status=ACCEPTED, quorum=7\nWHERE pk=p AND status=VOTING
+      note right of DB
+        Koşullu UPDATE: sayfa ziyareti ve komut
+        aynı anda çalışsa da öneri bir kez sonuçlanır.
+      end note
+    end
+    opt status = ACCEPTED
+      group transaction.atomic
+        P -> DB : UPDATE status=APPLIED, applied_at=now\nWHERE pk=p AND status=ACCEPTED
+        DB --> P : 1 satır (bu çağrı sahiplendi)
+        P -> P : apply()
+        activate P
+        P -> Top : is_deleted
+        Top --> P : False
+        alt konu silinmemiş
+          P -> Top : change(is_closed=True)
+          activate Top
+          Top -> DB : UPDATE topic SET is_closed\n(yalnızca değişen alan)
+          deactivate Top
+          P --> P : True
+        else konu bu arada silinmiş
+          P --> P : False
+        end
+        deactivate P
+        opt apply() False döndü
+          P -> DB : UPDATE status=FAILED, applied_at=NULL
+        end
+      end
+    end
+    P --> Cmd : sonuçlandı
+    deactivate P
+  end
+end
+Cmd --> T : "n öneri işlendi", çıkış kodu 0\n(hata veren öneri atlanır, sonunda 1)
+deactivate Cmd
+
+note over Cmd, P
+  Aynı finalize() öneri sayfası (page_data) ve panel (active_proposals)
+  açılınca da çağrılır: zamanlayıcı olmayan yerel sunucuda da süre işler.
+  Şablon metot: tally(), _accepted() ve apply() kancaları alt sınıfta.
+end note
+@enduml

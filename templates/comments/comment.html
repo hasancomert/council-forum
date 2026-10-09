@@ -7,7 +7,7 @@
   {% else %}
     {# div: HTML'de <p> içine <form> konamaz, tarayıcı paragrafı erken kapatır #}
     <div class="meta"><strong>{{ c.author|default:"silinmiş üye" }}</strong>
-      <a href="#c{{ c.pk }}">{{ c.created_at|date:"j F Y H:i" }}</a>{% if c.edited_at %} <span>düzenlendi</span>{% endif %}
+      <a href="#c{{ c.pk }}">{{ c.created_at|when }}</a>{% if c.edited_at %} <span>düzenlendi</span>{% endif %}
       {% if c.is_hidden %}<span class="badge hidden">Gizli</span>{% endif %}
       {% url 'comment_vote' c.pk as url %}{% include "_vote.html" with score=c.score mine=c.my_vote why=c.why %}</div>
     {% if c.is_hidden %}<p class="notice">Moderasyonla gizlendi; metnini yalnızca yazarı ve yöneticiler görüyor.</p>{% endif %}

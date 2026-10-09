@@ -1,0 +1,81 @@
+@startuml
+!include stil.iuml
+skinparam style strictuml
+autonumber
+hide footbox
+title Sıralama (sequence) diyagramı 1: telefondan karar oyu verme
+
+actor "Üye" as U
+boundary "Mobil uygulama\n(öneri ekranı)" as App
+control "@api\n(api/views.py)" as Api
+control "proposal_vote()" as View
+entity "p: TopicCloseProposal" as P
+entity "Vote" as V
+entity "user: User" as Usr
+database "Veritabanı" as DB
+
+U -> App : "Evet"e dokunur
+activate App
+App -> Api : POST /api/proposals/close/7/vote/\n{"choice": "yes"} + Bearer jeton
+activate Api
+Api -> Api : token_user(): imza ve süre\n(signing.loads, API_TOKEN_DAYS)
+Api -> DB : User.objects.get(pk, is_active=True)
+DB --> Api : user
+Api -> Api : şifre özeti eşleşiyor mu\n(get_session_auth_hash)
+break jeton geçersiz, süresi dolmuş ya da hesap kapalı
+  Api --> App : 401 {"error": "Oturumun sona erdi..."}
+  App -> App : jetonu sil, giriş ekranına dön
+end
+Api -> View : proposal_vote(request, "close", 7)
+activate View
+View -> DB : get_object_or_404(model_for("close"), pk=7)
+DB --> View : p
+View -> V : cast(proposal=p, voter=user, choice="yes")
+activate V
+V -> P : accepts_votes()
+activate P
+P --> V : True (VOTING, süre dolmadı)
+deactivate P
+V -> Usr : can_vote
+activate Usr
+Usr --> V : True (aktif, engelsiz,\nhesap ≥ 7 gün)
+deactivate Usr
+break oylama kapalı ya da oy hakkı yok
+  V --> Api : RuleError("Bu öneri şu anda oylanamıyor.")
+  Api --> App : 400 {"error": "..."}
+end
+V -> Usr : vote_weight
+activate Usr
+Usr --> V : 10 (B) / 1 (A)
+deactivate Usr
+V -> DB : update_or_create(öneri + voter,\ndefaults={choice, weight})
+note over V, DB
+  Upsert: ikinci oy öncekini değiştirir
+  (kural 6). Ağırlık oy anında sabitlenir.
+  UniqueConstraint: üye başına tek oy.
+end note
+DB --> V : vote
+V --> View : vote
+deactivate V
+View -> P : participant_count
+activate P
+P -> DB : COUNT(votes)
+DB --> P : 4
+P --> View : 4
+deactivate P
+View --> Api : {"mine": "yes", "participants": 4}
+deactivate View
+Api --> App : 200 JSON
+deactivate Api
+App -> Api : GET /api/proposals/close/7/ (ekranı yenile)
+activate Api
+Api --> App : turnout {n: 4, quorum: 5}, result: null
+deactivate Api
+App --> U : "Evet" seçili, "4/5 katılım"\n(sonuç oylama bitince açıklanır)
+deactivate App
+
+note over View, V
+  Sitede voting.views.vote() aynı Vote.cast()'ı çağırır:
+  kural tek yerde, site ve uygulama aynı sonucu verir.
+end note
+@enduml

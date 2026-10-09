@@ -6,7 +6,6 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.contenttypes.models import ContentType
-from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction
@@ -16,10 +15,11 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from accounts.models import User
-from comments.models import CommentVote
+from comments.models import UpDownVote
+from config.errors import RuleError
+from config.templatetags import capfirst
 from config.utils import back, get_target, over_limit
-from topics.models import TopicVote
-from voting.models import PANEL_CACHE_KEY, withdraw_running
+from voting.models import withdraw_running
 
 from .forms import ActionForm, UserActionForm
 from .models import Hideable, ModAction, Report
@@ -44,10 +44,9 @@ def _allowed(moderator, user):
     return not (user and (user == moderator or user.is_moderator or user.is_superuser))
 
 
-def _log(request, form, **fields):
-    ModAction.objects.create(moderator=request.user, reason=form.cleaned_data['reason'],
+def _log(moderator, form, **fields):
+    ModAction.objects.create(moderator=moderator, reason=form.cleaned_data['reason'],
                              note=form.cleaned_data['note'], **fields)
-    cache.delete(PANEL_CACHE_KEY)  # gizlenen/iptal edilen öneri ve maskelenen konu adı panelden hemen çıksın
 
 
 @moderator_required
@@ -68,17 +67,26 @@ def queue(request):
     return render(request, 'moderation/queue.html', {'page': page, 'items': items, 'title': 'Şikayetler'})
 
 
+def file_report(user, target):
+    """Şikayet (site ve API): mesajı döndürür. Şikayet edilemeyen içerikte PermissionDenied, hız sınırında RuleError."""
+    if not target.can_be_reported_by(user):
+        raise PermissionDenied
+    if over_limit(Report.objects.filter(reporter=user), 'REPORT_RATE'):
+        raise RuleError('Çok sık şikayet ediyorsun, biraz bekle.')
+    # içerik başına tek şikayet (veritabanında da UniqueConstraint)
+    _, created = Report.objects.get_or_create(content_type=ContentType.objects.get_for_model(target),
+                                              object_id=target.pk, reporter=user)
+    return 'Şikayetin yöneticilere iletildi.' if created else 'Bunu zaten şikayet ettin.'
+
+
 @login_required
 @require_POST
 def report(request, ct, pk):
     target = get_target(ct, pk, Hideable)
-    if not target.can_be_reported_by(request.user):
-        raise PermissionDenied
-    if over_limit(Report.objects.filter(reporter=request.user), 'REPORT_RATE'):
-        messages.error(request, 'Çok sık şikayet ediyorsun, biraz bekle.')
-    else:  # içerik başına tek şikayet (veritabanında da UniqueConstraint)
-        _, created = Report.objects.get_or_create(content_type_id=ct, object_id=target.pk, reporter=request.user)
-        messages.success(request, 'Şikayetin yöneticilere iletildi.' if created else 'Bunu zaten şikayet ettin.')
+    try:
+        messages.success(request, file_report(request.user, target))
+    except RuleError as e:
+        messages.error(request, str(e))
     path, _, anchor = target.get_absolute_url().partition('#')  # yorumda #c<pk>
     return redirect(back(request, path) + (f'#{anchor}' if anchor else ''))
 
@@ -90,23 +98,27 @@ def content(request, ct, pk):
     owner = target.owner
     allowed = _allowed(request.user, owner)
     reports = Report.objects.filter(content_type_id=ct, object_id=pk, is_open=True)
+    if request.method == 'POST' and not allowed:
+        raise PermissionDenied  # şikayetleri kapatmak da: kendi içeriğine gelen şikayeti yönetici kapatamaz
     if request.method == 'POST' and 'dismiss' in request.POST:  # kimseyi etkilemez, kayda düşmez
         reports.update(is_open=False)
         messages.success(request, 'Şikayetler kapatıldı.')
         return redirect('mod_queue')
     form = ActionForm(request.POST if request.method == 'POST' else None)
-    if form.is_bound:
-        if not allowed:
-            raise PermissionDenied
-        if form.is_valid():
-            hide = not target.is_hidden
-            with transaction.atomic():
-                target.set_hidden(hide)  # öneride süren oylama iptal olur
-                if hide:
-                    reports.update(is_open=False)  # gizleme o içeriğin açık şikayetlerini kapatır
-                _log(request, form, user=owner, target=target, kind=Kind.HIDE if hide else Kind.UNHIDE)
-            messages.success(request, 'Gizlendi.' if hide else 'Gizleme kaldırıldı.')
+    if form.is_valid():
+        # Niyet formdan (düğme), içeriğin o anki hâlinden değil: çift gönderim ya da aynı anda işlem yapan iki
+        # yönetici gizlemeyi geri çevirmesin; içerik zaten istenen hâldeyse işlem ve kayıt yok.
+        hide = request.POST.get('hide') == '1'
+        if hide == target.is_hidden:
+            messages.info(request, 'İçerik zaten gizli.' if hide else 'İçerik zaten görünür.')
             return redirect(target)
+        with transaction.atomic():
+            target.set_hidden(hide)  # öneride süren oylama iptal olur
+            if hide:
+                reports.update(is_open=False)  # gizleme o içeriğin açık şikayetlerini kapatır
+            _log(request.user, form, user=owner, target=target, kind=Kind.HIDE if hide else Kind.UNHIDE)
+        messages.success(request, 'Gizlendi.' if hide else 'Gizleme kaldırıldı.')
+        return redirect(target)
     return render(request, 'moderation/content.html', {
         'target': target, 'kind': target._meta.verbose_name, 'owner': owner, 'allowed': allowed, 'form': form,
         'reports': reports.count(), 'title': 'Moderasyon',
@@ -137,18 +149,17 @@ def member(request, pk):
                     user.banned_until = None
                 elif kind == Kind.CLOSE:  # yalnızca sahte hesap (form denetler)
                     user.is_active = False
-                    CommentVote.withdraw_all(user)
-                    TopicVote.withdraw_all(user)
+                    UpDownVote.withdraw_everywhere(user)
                     withdraw_running(user)
                 else:
                     user.is_active = True  # silinen oylar ve iptal edilen öneriler geri gelmez
                 user.save(update_fields=['banned_until', 'is_active'])
-                _log(request, form, user=user, kind=kind, until=until)
-            messages.success(request, f'{Kind(kind).label.capitalize()} kaydedildi.')
+                _log(request.user, form, user=user, kind=kind, until=until)
+            messages.success(request, f'{capfirst(Kind(kind).label)} kaydedildi.')
             return redirect('mod_user', user.pk)
     return render(request, 'moderation/member.html', {
         'member': user, 'allowed': allowed, 'kinds': kinds, 'form': form, 'title': f'Moderasyon: {user}',
-        'history': ModAction.objects.filter(user=user).select_related(*ROW)[:20],
+        'history': ModAction.objects.filter(user=user).select_related(*ROW)[:settings.FORUM['MOD_PER_PAGE']],
     })
 
 
@@ -160,8 +171,8 @@ def log(request):
         qs = qs.filter(kind=g['kind'])
     if g.get('reason') in ModAction.Reason.values:
         qs = qs.filter(reason=g['reason'])
-    if g.get('user'):
-        qs = qs.filter(Q(user__username__iexact=g['user']) | Q(moderator__username__iexact=g['user']))
+    if name := g.get('user', '').replace('\x00', ''):  # NUL'u PostgreSQL reddeder (500 olurdu)
+        qs = qs.filter(Q(user__username__iexact=name) | Q(moderator__username__iexact=name))
     return render(request, 'moderation/log.html', {
         'page': Paginator(qs, settings.FORUM['MOD_PER_PAGE']).get_page(g.get('page')),
         'kinds': Kind.choices, 'reasons': ModAction.Reason.choices, 'title': 'Moderasyon kaydı',

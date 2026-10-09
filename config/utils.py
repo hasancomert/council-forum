@@ -23,6 +23,14 @@ def get_target(ct, pk, base):
     return target
 
 
+def as_pk(value):
+    """Adresten ya da formdan gelen birincil anahtar, geçersizse None. Yalnızca ASCII rakam: '²' de isdigit()
+    sayılır ama int() ve veritabanı kabul etmez (500 hatası olurdu).
+    """
+    value = str(value or '')
+    return int(value) if value.isascii() and value.isdigit() else None
+
+
 def back(request, default):
     """Formdaki gizli `next` alanının (ya da ?next=) adresi, yoksa default. Yalnızca bu sitenin yolu ('/…')
     kabul edilir: başka siteye yönlendirme (open redirect, ör. //kotu.site) reddedilir.
@@ -38,7 +46,17 @@ def over_limit(qs, setting):
     return qs.filter(created_at__gte=timezone.now() - timedelta(minutes=minutes)).count() >= n
 
 
-class ReadOnlyAdmin(admin.ModelAdmin):
+class PrivateLookups:
+    """Admin'in adres süzgeçleri kimin oy verdiğini ya da şikayet ettiğini ele vermesin (kural 6): Django tek adımlı
+    ilişki süzgecine (?reporter=<pk>, ?vote=<pk>, ?votes=<pk>) her zaman izin verir; bu adlar reddedilir (400).
+    """
+    PRIVATE = {'reporter', 'vote', 'votes', 'topicvote', 'commentvote'}
+
+    def lookup_allowed(self, lookup, value, request):
+        return lookup.split('__')[0] not in self.PRIVATE and super().lookup_allowed(lookup, value, request)
+
+
+class ReadOnlyAdmin(PrivateLookups, admin.ModelAdmin):
     """Admin'de yalnızca görüntüleme: ekleme, değiştirme ve silme kapalı. Kayıtlar sitedeki akıştan
     (form, oylama, moderasyon) değişir; kurucu kural dışı müdahale edemez.
     """

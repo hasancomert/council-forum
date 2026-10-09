@@ -2,23 +2,23 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
-from django.core.cache import cache
 from django.db.models import ProtectedError
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from accounts.models import User
+from accounts.testing import make_user
 from comments.models import Comment, CommentVote
 from topics.models import Topic, TopicVote
 from voting.models import (
     BaseProposal, TopicCloseProposal, TopicOpenProposal, Vote, active_proposals, open_proposal_count,
 )
-from voting.tests import make_user
 
 from .models import ModAction, Report
 
 S = BaseProposal.Status
 NOTE = {'reason': 'troll', 'note': 'Kurala aykırı.'}
+HIDE = NOTE | {'hide': '1'}  # niyet düğmede (gizle: 1, gizlemeyi kaldır: 0)
 
 
 def mod_url(obj, prefix='mod'):
@@ -38,7 +38,6 @@ class ModTestCase(TestCase):
         cls.alice, cls.bob, cls.mod = make_user('alice'), make_user('bob'), make_moderator()
 
     def setUp(self):
-        cache.clear()  # panel önbelleği testler arasında taşınmasın
         self.topic = Topic.objects.create(title='Konu', author=self.alice)
 
     def login(self, user):
@@ -132,12 +131,12 @@ class ActionTests(ModTestCase):
         for bad in ({'note': ''}, {'reason': 'other'}):  # not zorunlu, "diğer" gerekçe yok
             self.assertEqual(self.client.post(mod_url(c), NOTE | bad).status_code, 200)
         self.assertFalse(ModAction.objects.exists())
-        self.client.post(mod_url(c), NOTE)
+        self.client.post(mod_url(c), HIDE)
         c.refresh_from_db()
         a = ModAction.objects.get()
         self.assertTrue(c.is_hidden)
         self.assertEqual((a.kind, a.reason, a.moderator, a.user, a.target), ('hide', 'troll', self.mod, self.alice, c))
-        self.client.post(mod_url(c), {'reason': 'troll', 'note': 'Yanlış gizleme.'})  # geri alma da kayda düşer
+        self.client.post(mod_url(c), NOTE | {'note': 'Yanlış gizleme.', 'hide': '0'})  # geri alma da kayda düşer
         c.refresh_from_db()
         self.assertFalse(c.is_hidden)
         self.assertEqual(list(ModAction.objects.order_by('pk').values_list('kind', flat=True)), ['hide', 'unhide'])
@@ -154,11 +153,11 @@ class ActionTests(ModTestCase):
                 self.assertEqual(self.client.post(f'/mod/user/{owner.pk}/', data).status_code, 403)
         self.assertFalse(ModAction.objects.exists())
 
-    def test_hiding_clears_panel_cache(self):
+    def test_hiding_removes_proposal_from_panel(self):
         p = TopicOpenProposal.objects.create(proposer=self.bob, title='Panel önerisi')
-        self.assertContains(self.client.get('/'), 'Panel önerisi')  # panel önbelleğe girdi
+        self.assertContains(self.client.get('/'), 'Panel önerisi')
         self.login(self.mod)
-        self.client.post(mod_url(p), NOTE)
+        self.client.post(mod_url(p), HIDE)
         p.refresh_from_db()
         self.assertEqual(p.status, S.CANCELLED)
         self.assertNotContains(self.client.get('/'), 'Panel önerisi')
@@ -212,7 +211,7 @@ class ActionTests(ModTestCase):
     def test_log_is_append_only_public_and_filterable(self):
         c = Comment.objects.create(target=self.topic, author=self.alice, body='Çok gizli söz')
         self.login(self.mod)
-        self.client.post(mod_url(c), NOTE | {'note': 'Hakaret içeriyor.'})
+        self.client.post(mod_url(c), HIDE | {'note': 'Hakaret içeriyor.'})
         a = ModAction.objects.get()
         a.note = 'değişti'
         with self.assertRaisesMessage(ValueError, 'değiştirilemez'):
@@ -287,7 +286,7 @@ class ReportTests(ModTestCase):
         for c in (a, b):
             self.report(c, self.bob)
         self.login(self.mod)
-        self.client.post(mod_url(a), NOTE)
+        self.client.post(mod_url(a), HIDE)
         self.client.post(mod_url(b), {'dismiss': '1'})
         b.refresh_from_db()
         self.assertFalse(Report.objects.filter(is_open=True).exists())
@@ -328,3 +327,84 @@ class AdminTests(ModTestCase):
             r = self.client.get(user_page)
             for field in ('role', 'is_moderator'):  # B statüsü oylamayla; yönetici ataması kuruluşla kapanır
                 self.assertNotContains(r, f'name="{field}"')
+
+
+class IntentTests(ModTestCase):
+    """Yetki ve niyet: şikayet kapatma da yetki ister; gizleme niyeti formdan gelir, içeriğin hâlinden değil."""
+
+    def test_cannot_dismiss_reports_on_own_content(self):
+        own = Comment.objects.create(target=self.topic, author=self.mod, body='x')
+        Report.objects.create(target=own, reporter=self.alice)
+        self.login(self.mod)
+        self.assertNotContains(self.client.get(mod_url(own)), 'Gizlemeden kapat')
+        self.assertEqual(self.client.post(mod_url(own), {'dismiss': '1'}).status_code, 403)
+        self.assertTrue(Report.objects.filter(is_open=True).exists())
+
+    def test_repeated_hide_keeps_content_hidden(self):  # çift gönderim ya da aynı anda iki yönetici
+        c = Comment.objects.create(target=self.topic, author=self.alice, body='x')
+        self.login(self.mod)
+        self.client.post(mod_url(c), HIDE)
+        self.client.post(mod_url(c), HIDE)
+        c.refresh_from_db()
+        self.assertTrue(c.is_hidden)
+        self.assertEqual(list(ModAction.objects.values_list('kind', flat=True)), ['hide'])
+        self.client.post(mod_url(c), NOTE | {'hide': '0'})
+        self.client.post(mod_url(c), NOTE | {'hide': '0'})
+        self.assertEqual(ModAction.objects.filter(kind='unhide').count(), 1)
+
+    def test_log_filter_survives_nul(self):  # PostgreSQL NUL karakterli sorguyu reddeder (500 olurdu)
+        self.assertEqual(self.client.get('/mod/log/?user=%00').status_code, 200)
+
+    def test_log_filters_by_reason_and_pages(self):
+        for reason in ('troll', 'abuse'):
+            ModAction.objects.create(moderator=self.mod, user=self.bob, kind='ban', reason=reason, note='.')
+        self.assertEqual([a.reason for a in self.client.get('/mod/log/?reason=abuse').context['page']], ['abuse'])
+        with override_settings(FORUM={**settings.FORUM, 'MOD_PER_PAGE': 1}):
+            self.assertEqual(self.client.get('/mod/log/').context['page'].paginator.num_pages, 2)
+
+    def test_unverified_account_is_not_reopened_by_moderation(self):
+        unverified = make_user('dogrulanmamis')
+        User.objects.filter(pk=unverified.pk).update(is_active=False)
+        self.login(self.mod)
+        self.assertEqual(self.client.get(f'/mod/user/{unverified.pk}/').context['kinds'], [])  # e-posta bağlantısıyla açılır
+
+    def test_content_links_by_role(self):
+        for user, report, moderate in ((self.bob, True, False), (self.mod, False, True), (None, False, False)):
+            with self.subTest(user and user.username):
+                self.login(user)
+                html = self.client.get(self.topic.get_absolute_url()).content.decode()
+                self.assertEqual(('class="report"' in html, f'href="{mod_url(self.topic)}"' in html), (report, moderate))
+
+
+class AdminPrivacyTests(TestCase):
+    """Kurucu da kimin ne oy verdiğini ve kimin şikayet ettiğini görmez (kural 6, 10. adım)."""
+
+    def setUp(self):
+        self.root = make_user('kurucu')
+        User.objects.filter(pk=self.root.pk).update(is_staff=True, is_superuser=True)
+        self.client.force_login(self.root)
+
+    def test_topic_added_in_admin_belongs_to_founder(self):  # kural 9: ilk konuları kurucu açar
+        self.client.post('/admin/topics/topic/add/', {'title': 'Kuruluş konusu', 'description': ''})
+        self.assertEqual(Topic.objects.get(title='Kuruluş konusu').author, self.root)
+
+    def test_members_cannot_be_deleted_in_admin(self):
+        # silme onay sayfası üyenin oylarını ("…: yes") ve şikayetlerini listeler; CASCADE bitmiş sonucu değiştirirdi
+        member = make_user('secmen')
+        self.assertEqual(self.client.get(f'/admin/accounts/user/{member.pk}/delete/').status_code, 403)
+        self.assertNotContains(self.client.get('/admin/accounts/user/'), 'delete_selected')
+
+    def test_url_lookups_cannot_reveal_voters_or_reporters(self):
+        for url in ('/admin/moderation/report/?reporter=1', '/admin/accounts/user/?vote=1',
+                    '/admin/accounts/user/?topicvote=1', '/admin/accounts/user/?commentvote=1',
+                    '/admin/topics/topic/?votes=1', '/admin/comments/comment/?votes=1',
+                    '/admin/voting/topiccloseproposal/?votes=1'):
+            with self.subTest(url):
+                self.assertEqual(self.client.get(url).status_code, 400)
+        self.assertEqual(self.client.get('/admin/moderation/report/?is_open__exact=1').status_code, 200)
+
+    def test_after_founding_no_new_accounts_or_backdating(self):  # kural 1'deki hesap yaşı atlanmasın
+        member = make_user('uye')
+        with override_settings(FORUM={**settings.FORUM, 'FOUNDING': False}):
+            self.assertEqual(self.client.get('/admin/accounts/user/add/').status_code, 403)
+            self.assertNotContains(self.client.get(f'/admin/accounts/user/{member.pk}/change/'), 'name="date_joined')

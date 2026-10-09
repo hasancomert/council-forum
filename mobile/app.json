@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Forum",
+    "slug": "forum",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "forum",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1d5bb8",
+        "foregroundImage": "./assets/images/adaptive-icon.png"
+      }
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#f7f7f5",
+          "image": "./assets/images/icon.png",
+          "imageWidth": 96,
+          "dark": { "backgroundColor": "#141619" }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

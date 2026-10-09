@@ -1,0 +1,87 @@
+@startuml
+!include stil.iuml
+skinparam style strictuml
+autonumber
+hide footbox
+title Sıralama (sequence) diyagramı 3: kayıt, CAPTCHA ve e-posta doğrulama
+
+actor "Ziyaretçi" as Z
+boundary "Tarayıcı" as B
+participant "Cloudflare\nTurnstile" as CF <<dış sistem>>
+control "signup()\n(accounts/views.py)" as SV
+participant "form: SignupForm" as F
+entity "User" as U
+participant "E-posta\nsunucusu" as Mail <<dış sistem>>
+control "activate()" as AV
+database "Veritabanı" as DB
+
+Z -> B : "Kayıt ol"
+activate B
+B -> SV : GET /accounts/signup/
+activate SV
+SV --> B : form + Turnstile site anahtarı
+deactivate SV
+B -> CF : CAPTCHA aracı (görünmez sınama)
+activate CF
+CF --> B : cf-turnstile-response jetonu
+deactivate CF
+Z -> B : ad, soyad, takma ad, e-posta,\nşifre ×2, şartları kabul kutusu
+B -> SV : POST /accounts/signup/
+activate SV
+SV -> U : purge_unverified()
+activate U
+U -> DB : DELETE doğrulanmamış ve süresi\n(3 gün) dolmuş hesaplar
+deactivate U
+SV -> F : is_valid()
+activate F
+F -> F : clean_username()
+F -> DB : benzer ad var mı (iregex:\ni/ı/I/İ ve büyük/küçük harf farkı yok)
+DB --> F : yok
+F -> F : clean_email(): küçük harfe çevir
+F -> CF : turnstile_ok(jeton): POST siteverify\n(gizli anahtar; zaman aşımı 10 sn)
+activate CF
+CF --> F : {"success": true}
+deactivate CF
+F --> SV : True
+deactivate F
+break form geçersiz (benzer ad, zayıf şifre, CAPTCHA)
+  SV --> B : form + hata mesajları
+end
+group transaction.atomic: e-posta gitmezse hesap da oluşmaz
+  SV -> F : save(commit=False)
+  F --> SV : user
+  SV -> DB : INSERT user (is_active=False,\nterms_accepted_at=now)
+  SV -> SV : uid + default_token_generator.make_token(user)
+  SV -> Mail : email_user("Forum hesabını doğrula", bağlantı)
+  activate Mail
+  Mail --> SV : gönderildi
+  deactivate Mail
+end
+SV --> B : "E-postanı kontrol et"
+deactivate SV
+Mail ->> Z : doğrulama bağlantısı (3 gün geçerli)
+Z -> B : bağlantıya tıklar
+B -> AV : GET /accounts/activate/<uid>/<token>/
+activate AV
+AV -> DB : User.objects.get(pk=uid)
+DB --> AV : user
+AV -> AV : check_token(user, token)
+break bağlantı kullanılmış ya da süresi dolmuş
+  AV --> B : 400 "Geçersiz bağlantı"
+end
+AV -> DB : UPDATE is_active=True
+AV -> AV : login(request, user)
+note right of AV
+  last_login değişir, jeton geçersizleşir:
+  bağlantı tek kullanımlıktır.
+end note
+AV --> B : 302 → ana sayfa (giriş yapılmış)
+deactivate AV
+B --> Z : forum ana sayfası
+deactivate B
+
+note over CF, SV
+  CAPTCHA isteği veritabanı işleminin dışında (is_valid()):
+  ağ beklerken SQLite'ın yazma kilidi tutulmaz.
+end note
+@enduml

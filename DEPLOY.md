@@ -160,7 +160,7 @@ Windows'ta:
 ```powershell
 PS> python manage.py test
 PS> git checkout main
-PS> git merge adim-9                 # ya da GitHub'da pull request
+PS> git merge --ff-only adim-11      # yayınlanacak dal; ya da GitHub'da pull request
 PS> git tag v2026.09.25              # her yayın bir etiket: geri dönülecek nokta
 PS> git push origin main --tags
 PS> ssh root@SUNUCU_IP /srv/forum/deploy/update.sh v2026.09.25

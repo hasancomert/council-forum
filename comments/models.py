@@ -4,6 +4,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models, transaction
 from django.db.models import F, OuterRef, Subquery
 
+from config.errors import RuleError
 from moderation.models import Hideable
 
 
@@ -54,6 +55,13 @@ class Comment(Hideable):
         return (user.can_vote and self.author_id != user.pk and not self.is_deleted and not self.is_hidden
                 and self.target.is_open)
 
+    def soft_delete(self):
+        """Yazarın silmesi (site ve API): yerinde "Bu yorum silindi" yazar, yanıtlar kalır, geri alınmaz. Hedef
+        kapalı ya da yorum gizli olsa da serbest. Metin kalır (kural 7); hesap silmede üye isterse boşaltılır.
+        """
+        self.is_deleted = True
+        self.save(update_fields=['is_deleted'])
+
 
 def vote_block(user):
     """▲/▼ verilemiyorsa kullanıcıya bağlı nedeni (düğme soluk, üzerine gelince yazar), verebiliyorsa ''.
@@ -85,19 +93,19 @@ class UpDownVote(models.Model):
     @transaction.atomic
     def cast(cls, target, voter, value):
         """▲ (1) ya da ▼ (−1); aynı tuşa ikinci basış oyu geri alır. Yeni oyu (1, −1, 0) döndürür."""
-        if value not in (1, -1):
-            raise ValueError('Geçersiz oy.')
+        if isinstance(value, bool) or value not in (1, -1):  # JSON'daki true da 1 sayılırdı (True == 1)
+            raise RuleError('Geçersiz oy.')
         # Hedef satırı kilitle: aynı hedefe eşzamanlı oylar (ör. çift tık) sırayla işlensin, puan kaymasın.
         target = type(target).objects.select_for_update().get(pk=target.pk)
         if not target.can_be_voted_by(voter):
-            raise ValueError('Buna oy verilemez.')
+            raise RuleError('Buna oy verilemez.')
         key = {cls.TARGET: target, 'voter': voter}
         old = cls.objects.filter(**key).first()
         old_value = old.value if old else 0
         new = 0 if value == old_value else value
         if new:
             cls.objects.update_or_create(**key, defaults={'value': new})
-        elif old:
+        else:  # aynı tuşa ikinci basış: eski oy vardı
             old.delete()
         type(target).objects.filter(pk=target.pk).update(score=F('score') + new - old_value)  # atomik, sayım gerekmez
         return new
@@ -112,6 +120,14 @@ class UpDownVote(models.Model):
         target_model.objects.filter(pk__in=mine.values(cls.TARGET)).update(
             score=F('score') - Subquery(mine.filter(**{cls.TARGET: OuterRef('pk')}).values('value')))
         mine.delete()
+
+    @staticmethod
+    def withdraw_everywhere(voter):
+        """Hesap kapatma: üyenin her tür ▲/▼ oyu (yorum, konu). Moderasyon oy türlerini tek tek bilmez; yeni bir
+        oylanabilir içerik türü (yeni alt sınıf) kendiliğinden girer.
+        """
+        for model in UpDownVote.__subclasses__():
+            model.withdraw_all(voter)
 
 
 class CommentVote(UpDownVote):

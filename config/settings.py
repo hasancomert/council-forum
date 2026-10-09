@@ -66,7 +66,8 @@ def required(name, dev_default):
 
 
 SECRET_KEY = required('SECRET_KEY', 'django-insecure-yalnizca-gelistirme')
-ALLOWED_HOSTS = env_list('ALLOWED_HOSTS')  # DEBUG'da boşsa localhost geçer
+# DEBUG'da boşsa her ad: telefon (mobil uygulama) bilgisayara yerel ağ IP'siyle bağlanır (runserver 0.0.0.0:8000)
+ALLOWED_HOSTS = env_list('ALLOWED_HOSTS') or (['*'] if DEBUG else [])
 CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')  # yalnızca başka bir alan adından form gelecekse
 
 INSTALLED_APPS = [
@@ -81,6 +82,7 @@ INSTALLED_APPS = [
     'voting',
     'comments',
     'moderation',
+    'api',
 ]
 
 MIDDLEWARE = [
@@ -116,10 +118,6 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {'default': database(os.environ.get('DATABASE_URL'))}
-
-# Veritabanı önbelleği: gunicorn'un bütün süreçleri aynı önbelleği görür (LocMemCache süreç başınaydı,
-# moderasyonun cache.delete()'i yalnızca kendi sürecini temizliyordu). Tablo: manage.py createcachetable
-CACHES = {'default': {'BACKEND': 'django.core.cache.backends.db.DatabaseCache', 'LOCATION': 'django_cache'}}
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -199,7 +197,8 @@ SITE = {
     'email': required('CONTACT_EMAIL', 'iletisim@example.com'),  # hukuki bildirim ve KVKK başvurusu
 }
 
-# Forum kuralları (CLAUDE.md > Kurallar). Kural sayıları yalnızca burada tutulur.
+# Forum kuralları (CLAUDE.md > Kurallar). Kural sayıları yalnızca burada tutulur; açılışta denetlenir
+# (voting/checks.py: yanlış girilen değer runserver ve check --deploy'da hata verir, sayfada 500 değil).
 FORUM = {
     'VOTE_WEIGHT': {'A': 1, 'B': 10},  # kural 2: rol -> karar oylamasındaki ağırlık
     'MIN_ACCOUNT_AGE_DAYS': 7,  # kural 1: oy hakkı için hesap yaşı
@@ -220,11 +219,11 @@ FORUM = {
     'COMMENTS_PER_PAGE': 20,  # ana yorum; yanıtlar ana yorumlarıyla aynı sayfada
     'PANEL_VOTING': 10,  # ana sayfa panelinde en fazla oylamadaki öneri
     'PANEL_DISCUSSION': 5,  # panelde en fazla tartışmadaki istek
-    'PANEL_CACHE_SECONDS': 60,  # panelin herkes için aynı kısmı; 0 = önbellek yok
     'COMMENT_RATE': (5, 10),  # hız sınırı: 10 dakikada en fazla 5 yorum
     'MOD_NOTE_MAX_LENGTH': 200,  # moderasyon işleminin herkese açık notu; değişirse makemigrations
     'BAN_DAYS': (1, 7, 30, 365),  # seçilebilen engel süreleri (gün); kalıcı engel yok, sahte hesap kapatılır
     'MOD_PER_PAGE': 50,  # moderasyon kaydı ve şikayet kuyruğu
     'REPORT_RATE': (10, 60),  # hız sınırı: 60 dakikada en fazla 10 şikayet
+    'API_TOKEN_DAYS': 30,  # mobil uygulamanın giriş jetonu bu kadar gün geçerli (şifre değişince hemen biter)
     'FOUNDING': True,  # kural 9: kuruluş sürüyor; False olunca admin'den konu eklenemez, rol ve yönetici salt okunur
 }

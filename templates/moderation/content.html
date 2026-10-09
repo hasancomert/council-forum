@@ -3,16 +3,18 @@
 <h1>Moderasyon</h1>
 <p>{{ kind|capfirst }}: <a href="{{ target.get_absolute_url }}">{{ target }}</a>{% if target.is_hidden %} <span class="badge hidden">Gizli</span>{% endif %}</p>
 <p>Sahibi: {% if owner %}<a href="{% url 'mod_user' owner.pk %}">{{ owner }}</a>{% else %}silinmiş üye{% endif %}</p>
-{% if reports %}
-  <form method="post" class="notice">{% csrf_token %}
-    Açık şikayet: {{ reports }}. Gizlemek şikayetleri kapatır; yersizse
-    <button name="dismiss" value="1">Gizlemeden kapat</button> (kayda düşmez).
-  </form>
-{% endif %}
 {% if allowed %}
+  {% if reports %}
+    <form method="post" class="notice">{% csrf_token %}
+      Açık şikayet: {{ reports }}. Gizlemek şikayetleri kapatır; yersizse
+      <button name="dismiss" value="1">Gizlemeden kapat</button> (kayda düşmez).
+    </form>
+  {% endif %}
+  {# niyet düğmede: çift gönderim ya da aynı anda işlem yapan iki yönetici gizlemeyi geri çevirmesin #}
   <form method="post">{% csrf_token %}
     {{ form }}
-    <button class="primary">{% if target.is_hidden %}Gizlemeyi kaldır{% else %}Gizle{% endif %}</button>
+    {% if target.is_hidden %}<button class="primary" name="hide" value="0">Gizlemeyi kaldır</button>
+    {% else %}<button class="primary" name="hide" value="1">Gizle</button>{% endif %}
   </form>
   {% if target.status == "voting" %}<p><small>Süren öneri gizlenince iptal olur; gizleme kaldırılsa da iptal kalır.</small></p>{% endif %}
 {% else %}

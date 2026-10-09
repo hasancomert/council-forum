@@ -3,16 +3,18 @@ from urllib.parse import quote
 
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
+from django.db import connection
 from django.template import Context, Template
-from django.test import Client, RequestFactory, TestCase, override_settings
+from django.test import Client, RequestFactory, SimpleTestCase, TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from accounts.models import User
-from topics.models import Topic
+from accounts.testing import make_user
+from topics.models import Topic, TopicVote
 from voting.models import RequestProposal, TopicCloseProposal, active_member_count
-from voting.tests import make_user
 
-from .models import Comment, CommentVote
+from .models import Comment, CommentVote, UpDownVote
 
 
 def add_url(target):
@@ -46,6 +48,9 @@ class AddTests(CommentTestCase):
         self.assertIsNone(Comment.objects.get(body='Yanlış hedef').parent)
         self.client.post(add_url(self.topic), {'body': 'Bozuk', 'parent': 'abc'})
         self.assertIsNone(Comment.objects.get(body='Bozuk').parent)
+        r = self.client.post(add_url(self.topic), {'body': 'Üst simge', 'parent': '²'}, follow=True)
+        self.assertNotContains(r, 'expected a number')  # '²'.isdigit() doğru: Django'nun iç hatası sızıyordu
+        self.assertIsNone(Comment.objects.get(body='Üst simge').parent)
 
     def test_closed_or_hidden_target_403_and_non_commentable_404(self):
         child = Topic.objects.create(title='Alt', parent=self.topic)
@@ -305,3 +310,34 @@ class AdminTests(CommentTestCase):
         self.assertEqual(r.status_code, 200)
         self.assertNotContains(r, 'name="_save"')  # kaydet düğmesi yok
         self.assertEqual(self.client.get('/admin/comments/comment/add/').status_code, 403)
+
+
+class ConcurrencyTests(CommentTestCase):
+    def test_edit_writes_only_body_and_time(self):
+        """Düzenleme bütün satırı yazsaydı aynı anda gelen ▲/▼ puanını ya da moderasyon gizlemesini ezerdi."""
+        c = self.comment(body='Eski')
+        self.client.force_login(self.alice)
+        with CaptureQueriesContext(connection) as q:
+            self.client.post(f'/comments/{c.pk}/edit/', {'body': 'Yeni'})
+        updates = [x['sql'] for x in q if x['sql'].startswith('UPDATE "comments_comment"')]
+        self.assertEqual(len(updates), 1)
+        for column in ('"score"', '"is_hidden"', '"is_deleted"'):
+            self.assertNotIn(column, updates[0])
+        c.refresh_from_db()
+        self.assertEqual(c.body, 'Yeni')
+        self.assertIsNotNone(c.edited_at)
+
+    def test_expert_comment_vote_counts_one(self):
+        c = self.comment()
+        self.assertEqual(CommentVote.cast(c, make_user('uzman', role='B'), 1), 1)
+        c.refresh_from_db()
+        self.assertEqual(c.score, 1)
+
+    def test_boolean_is_not_a_vote(self):  # JSON'daki true, Python'da 1'e eşit: PostgreSQL'de puan + boolean hatası
+        with self.assertRaisesMessage(ValueError, 'Geçersiz oy'):
+            CommentVote.cast(self.comment(), self.bob, True)
+
+
+class UpDownVoteUnitTests(SimpleTestCase):
+    def test_every_vote_type_is_withdrawn_on_account_close(self):
+        self.assertEqual(set(UpDownVote.__subclasses__()), {CommentVote, TopicVote})

@@ -7,39 +7,32 @@
   {% if proposal.is_hidden and not masked %}<span class="badge hidden">Gizli</span>{% endif %}</h1>
 {# div: şikayet formu (details) <p> içine konamaz #}
 <div class="meta"><span>{{ proposal.kind|capfirst }}</span> <span>{{ proposal.proposer|default:"silinmiş üye" }}</span>
-  <span>{{ proposal.created_at|date:"j F Y H:i" }}</span> {% mod_links proposal %}</div>
+  <span>{{ proposal.created_at|when }}</span> {% mod_links proposal %}</div>
 
 {% if masked %}
   <p class="notice">Bu öneri moderasyonla gizlendi.</p>
 {% else %}
   {% if proposal.is_hidden %}<p class="notice">Bu öneri moderasyonla gizlendi; metnini yalnızca sen ve yöneticiler görüyor.</p>{% endif %}
   {# gizli konunun adı burada da kendiliğinden maskelenir (Topic.__str__) #}
-  {% if proposal.parent %}
-    <p>Üst konu: {% if proposal.parent.has_page %}<a href="{{ proposal.parent.get_absolute_url }}">{{ proposal.parent }}</a>{% else %}{{ proposal.parent }} (silinmiş){% endif %}</p>
-  {% endif %}
-  {% if proposal.topic %}
-    <p>Konu: {% if proposal.topic.has_page %}<a href="{{ proposal.topic.get_absolute_url }}">{{ proposal.topic }}</a>{% else %}{{ proposal.topic }} (silinmiş){% endif %}</p>
-  {% endif %}
-  {% if proposal.target_user %}<p>Üye: {{ proposal.target_user }}</p>{% endif %}
-  {% if proposal.action %}<p>İşlem: {{ proposal.get_action_display }}</p>{% endif %}
-  {% if proposal.new_title %}<p>Önerilen başlık: <strong>{{ proposal.new_title }}</strong></p>{{ proposal.new_description|linebreaks }}{% endif %}
-  {% if proposal.description %}{{ proposal.description|linebreaks }}{% endif %}
-  {% if proposal.content %}{{ proposal.content|linebreaks }}{% endif %}
-  {% if proposal.reason %}<h2>Gerekçe</h2>{{ proposal.reason|linebreaks }}{% endif %}
+  {% with t=proposal.target %}{% if t %}
+    <p>{{ proposal.target_label|capfirst }}: {% if t.has_page %}<a href="{{ t.get_absolute_url }}">{{ t }}</a>{% else %}{{ t }} (silinmiş){% endif %}</p>
+  {% endif %}{% endwith %}
+  {# tipin kendi alanları (BaseProposal.details): API de aynı listeyi gönderir #}
+  {% for label, value in proposal.details %}<p><strong>{{ label|capfirst }}:</strong> {{ value|linebreaksbr }}</p>{% endfor %}
 {% endif %}
 
 <h2>Oylama</h2>
 {% if proposal.status == "cancelled" %}
   <p>Sonuç: <strong>İptal edildi</strong>. Oylama sonuçlanmadığı için ara sonuç açıklanmaz.</p>
 {% elif tally %}
-  <p>Sonuç: <strong>{{ proposal.get_status_display }}</strong>{% if proposal.applied_at %} · {{ proposal.applied_at|date:"j F Y H:i" }}{% endif %}</p>
+  <p>Sonuç: <strong>{{ proposal.get_status_display }}</strong>{% if proposal.applied_at %} · {{ proposal.applied_at|when }}{% endif %}</p>
   {# kural 6: oran yalnızca bitince; çubuğun yeşili evet, kırmızısı hayır (sayılar yazıda da) #}
   {% if tally.count %}<progress class="result" max="{{ tally.yes|add:tally.no }}" value="{{ tally.yes }}" aria-label="Evet oranı">{{ tally.yes }}/{{ tally.yes|add:tally.no }}</progress>{% endif %}
   <p>Evet {{ tally.yes }} · Hayır {{ tally.no }}{% if proposal.WEIGHTED %} (ağırlıklı){% endif %} · katılım {{ tally.count }}, yeter sayı {{ proposal.quorum }}</p>
   {% if proposal.status == "failed" %}<p class="notice">Kabul edildi, ama hedefin durumu artık uygun olmadığı için (ör. konu kapandı ya da silindi) uygulanamadı. Aynı öneri yeniden açılabilir.</p>{% endif %}
 {% else %}
-  {% if proposal.in_discussion %}<p>Tartışma sürüyor; oylama {{ proposal.discussion_ends_at|date:"j F Y H:i" }} tarihinde başlar.</p>{% endif %}
-  <p>Bitiş: {{ proposal.voting_ends_at|date:"j F Y H:i" }} ({{ proposal.voting_ends_at|left }} kaldı). Sonuç oylama bitince açıklanır.</p>
+  {% if proposal.in_discussion %}<p>Tartışma sürüyor; oylama {{ proposal.discussion_ends_at|when }} tarihinde başlar.</p>{% endif %}
+  <p>Bitiş: {{ proposal.voting_ends_at|when }} ({{ proposal.voting_ends_at|left }} kaldı). Sonuç oylama bitince açıklanır.</p>
   {% if not proposal.in_discussion %}{% include "voting/_turnout.html" with n=proposal.participant_count %}{% endif %}
   {% if not user.is_authenticated %}
     <p><a href="{% url 'login' %}?next={{ request.path|urlencode }}">Giriş yap</a>, oy ver.</p>
@@ -53,7 +46,7 @@
           <button name="choice" value="no" aria-pressed="{% if my_vote.choice == 'no' %}true{% else %}false{% endif %}">Hayır</button>
         </form>
       {% else %}
-        <p>{% if user.is_banned %}Engelin sürerken oy veremezsin.{% else %}Henüz oy hakkın yok (kural 1: hesap yaşı).{% endif %}</p>
+        <p>{{ why }}.</p>
       {% endif %}
     {% endif %}
   {% endif %}

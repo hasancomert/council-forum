@@ -2,10 +2,7 @@ from django.contrib import admin
 
 from config.utils import ReadOnlyAdmin
 
-from .models import (
-    ExpertProposal, RequestProposal, TopicCloseProposal, TopicDeleteProposal,
-    TopicEditProposal, TopicOpenProposal, TopicUndoProposal,
-)
+from .models import PROPOSAL_MODELS
 
 
 class ProposalAdmin(ReadOnlyAdmin):
@@ -16,8 +13,4 @@ class ProposalAdmin(ReadOnlyAdmin):
     readonly_fields = ('proposer', 'created_at', 'status', 'quorum', 'applied_at', 'is_hidden')
 
 
-admin.site.register(
-    (TopicOpenProposal, TopicEditProposal, TopicCloseProposal, TopicDeleteProposal,
-     TopicUndoProposal, ExpertProposal, RequestProposal),
-    ProposalAdmin,
-)
+admin.site.register(PROPOSAL_MODELS, ProposalAdmin)  # yeni öneri tipi kendiliğinden (Registry)

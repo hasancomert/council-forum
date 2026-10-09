@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 
 from django.conf import settings
@@ -42,15 +43,27 @@ class User(AbstractUser):
     def anonymize(self):
         """Hesap silme (KVKK): kişisel bilgiler silinir, satır kalır. Gerçek silme karar oylarını CASCADE'le
         silip bitmiş oylamaların sonucunu değiştirir, moderasyon kaydı (PROTECT) da buna izin vermez.
-        Takma ad ve e-posta benzersiz olmalı: kişiye ait olmayan, pk'den türeyen değerler yazılır.
+        Takma ad ve e-posta benzersiz olmalı: kişiye ait olmayan rastgele değerler yazılır (pk'den türeseler biri o
+        adla önceden kayıt olup silmeyi engelleyebilirdi).
         """
-        self.username, self.email = f'silinmis-{self.pk}', f'{self.pk}@silinmis.invalid'
+        token = uuid.uuid4().hex
+        self.username, self.email = f'silinmis-{token}', f'{token}@silinmis.invalid'
         self.first_name = self.last_name = ''
         self.set_unusable_password()  # öbür cihazlardaki oturumlar da düşer (oturum şifre özetine bağlı)
         self.is_active = self.is_moderator = False
         self.role, self.banned_until, self.terms_accepted_at = self.Role.MEMBER, None, None
         self.deleted_at = timezone.now()
         self.save()
+
+    @classmethod
+    def purge_unverified(cls):
+        """Doğrulama süresi (PASSWORD_RESET_TIMEOUT) dolan hesapları siler ki takma ad ve e-posta yeniden alınabilsin;
+        kayıt formu gönderilince çalışır. Silinmiş hesap ve moderasyon kaydındaki hesap (PROTECT: kapatılmış, hiç giriş
+        yapmamış hesap da kapalıdır) hariç.
+        """
+        expired = timezone.now() - timedelta(seconds=settings.PASSWORD_RESET_TIMEOUT)
+        cls.objects.filter(is_active=False, last_login=None, deleted_at=None, date_joined__lt=expired,
+                           mod_actions=None).delete()
 
     @property
     def vote_weight(self):

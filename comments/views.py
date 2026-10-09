@@ -1,26 +1,32 @@
+from collections import defaultdict
+
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
+from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from config.utils import back, get_target, over_limit
+from config.errors import RuleError
+from config.utils import as_pk, back, get_target, over_limit
 
 from .forms import CommentForm
-from .models import Comment, Commentable, CommentVote
+from .models import Comment, Commentable, CommentVote, vote_block
 
 
 def updown(request, model, target, url):
-    """▲/▼ oyu (yorum ve konu, model: CommentVote ya da TopicVote). vote.js'in fetch'i Accept: application/json
+    """▲/▼ oyu (yorum ve konu, model: CommentVote ya da TopicVote). site.js'in fetch'i Accept: application/json
     gönderir: yanıt {score, mine} ya da hata 400 {error}. JS yoksa tarayıcı text/html ister: bugünkü gibi
     mesaj + url'e yönlendirme.
     """
     as_json = request.get_preferred_type(['text/html', 'application/json']) == 'application/json'
     try:
         mine = model.cast(target, request.user, {'1': 1, '-1': -1}.get(request.POST.get('value'), 0))
-    except ValueError as e:
+    except RuleError as e:
         if as_json:
             return JsonResponse({'error': str(e)}, status=400)
         messages.error(request, str(e))
@@ -36,26 +42,69 @@ def _back(request, comment):
     return f'{back(request, comment.target.get_absolute_url())}#c{comment.pk}'
 
 
+def section(target, user, sort=None, number=None):
+    """Hedefin yorumlarının bir sayfası (yorum bölümü ve API). Ana yorumlar veritabanında sıralanıp sayfalanır
+    (COMMENTS_PER_PAGE), yanıtlar yalnızca sayfadaki ana yorumlar için gelir. Yorum sayısından bağımsız 4 sorgu:
+    sayımlar, sayfa, yanıtlar ve kullanıcının oyları. Tek seviye yanıt olduğundan özyineleme yok, gruplama Python'da.
+    """
+    top = target.comments.filter(parent=None).select_related('author')
+    # eşit puanda eski önde; pk son ölçüt: aynı anda yazılanların sırası da sabit (sayfalamada tekrar/atlama olmaz)
+    top = top.order_by('-created_at', '-pk') if sort == 'new' else top.order_by('-score', 'created_at', 'pk')
+    n = target.comments.aggregate(top=Count('pk', filter=Q(parent=None)),
+                                  shown=Count('pk', filter=Q(is_deleted=False, is_hidden=False)))
+    paginator = Paginator(top, settings.FORUM['COMMENTS_PER_PAGE'])
+    paginator.count = n['top']  # count bir cached_property: kendi sayım sorgusu yerine yukarıdaki kullanılır
+    page = paginator.get_page(number)  # geçersiz sayfa → ilk/son
+    top = list(page)
+    replies = list(target.comments.filter(parent__in=top).select_related('author').order_by('created_at', 'pk'))
+    mine = {}
+    if top and user.is_authenticated:
+        mine = dict(CommentVote.objects.filter(voter=user, comment__in=top + replies).values_list('comment_id', 'value'))
+    groups = defaultdict(list)
+    is_open, why = target.is_open, vote_block(user)
+    for c in top + replies:
+        c.my_vote = mine.get(c.pk, 0)
+        c.masked = c.hidden_from(user)  # gizli metni yalnızca yazarı ve yöneticiler görür
+        c.frozen = c.is_hidden or not is_open  # yanıt, oy ve düzenleme yok; yazar yine silebilir
+        # ▲/▼ hep görünür; verilemiyorsa düğmeler soluk ve nedeni yazar (sorgu yok)
+        c.why = why or ('Kendi yorumuna oy verilmez' if c.author_id == user.pk else 'Oylama kapalı' if c.frozen else '')
+    for r in replies:
+        groups[r.parent_id].append(r)  # yanıtlar hep kronolojik
+    for c in top:
+        c.children = groups[c.pk]
+    return {'open': is_open, 'comments': top, 'page': page, 'sort': sort, 'count': n['shown']}
+
+
+def create(user, target, data):
+    """Yorum ya da yanıt yazar (site ve API); data: 'body', isteğe bağlı 'parent'. Hedef kapalıysa ya da üye engelliyse
+    PermissionDenied (engelli okur ama yazamaz), boş/uzun yorumda ve hız sınırında RuleError (mesajla).
+    """
+    if not target.is_open or not user.can_post:
+        raise PermissionDenied
+    form = CommentForm(data)
+    if not form.is_valid():
+        raise RuleError('Yorum boş ya da çok uzun.')
+    if over_limit(Comment.objects.filter(author=user), 'COMMENT_RATE'):  # silinenler de sayılır
+        raise RuleError('Çok sık yorum yazıyorsun, biraz bekle.')
+    pk = as_pk(data.get('parent'))
+    parent = target.comments.filter(pk=pk, is_deleted=False, is_hidden=False).first() if pk else None
+    comment = form.save(commit=False)
+    comment.target, comment.author = target, user
+    comment.parent_id = parent and (parent.parent_id or parent.pk)  # yanıta yanıt → ana yoruma; başka hedefin yorumu → None
+    comment.save()
+    return comment
+
+
 @login_required
 @require_POST
 def add(request, ct, pk):
     target = get_target(ct, pk, Commentable)
-    if not target.is_open or not request.user.can_post:  # engelli okur ama yazamaz
-        raise PermissionDenied
     url = target.get_absolute_url()
-    form = CommentForm(request.POST)
-    if not form.is_valid():
-        messages.error(request, 'Yorum boş ya da çok uzun.')
+    try:
+        comment = create(request.user, target, request.POST)
+    except RuleError as e:
+        messages.error(request, str(e))
         return redirect(back(request, url))
-    if over_limit(Comment.objects.filter(author=request.user), 'COMMENT_RATE'):  # silinenler de sayılır
-        messages.error(request, 'Çok sık yorum yazıyorsun, biraz bekle.')
-        return redirect(back(request, url))
-    p = request.POST.get('parent', '')
-    parent = target.comments.filter(pk=p, is_deleted=False, is_hidden=False).first() if p.isdigit() else None
-    comment = form.save(commit=False)
-    comment.target, comment.author = target, request.user
-    comment.parent_id = parent and (parent.parent_id or parent.pk)  # yanıta yanıt → ana yoruma; başka hedefin yorumu → None
-    comment.save()
     # Yanıt bulunduğu sayfaya; yeni ana yorum "en yeni" sıralamasının başında görünür.
     return redirect(_back(request, comment) if comment.parent_id else f'{url}?sort=new#c{comment.pk}')
 
@@ -68,8 +117,10 @@ def edit(request, pk):
     form = CommentForm(request.POST if request.method == 'POST' else None, instance=comment)
     if form.is_valid():
         if form.has_changed():
+            comment = form.save(commit=False)
             comment.edited_at = timezone.now()
-            form.save()
+            # yalnızca bu iki alan: aynı anda gelen ▲/▼ puanı ya da moderasyon gizlemesi ezilmesin
+            comment.save(update_fields=['body', 'edited_at'])
         return redirect(_back(request, comment))
     return render(request, 'comments/edit.html', {'form': form, 'back': _back(request, comment), 'title': 'Yorumu düzenle'})
 
@@ -85,6 +136,5 @@ def vote(request, pk):
 @require_POST
 def delete(request, pk):
     comment = get_object_or_404(Comment, pk=pk, author=request.user)
-    comment.is_deleted = True  # yumuşak silme; hedef kapalı olsa da serbest, geri alınmaz
-    comment.save(update_fields=['is_deleted'])
+    comment.soft_delete()
     return redirect(_back(request, comment))
