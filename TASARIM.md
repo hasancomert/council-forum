@@ -1,7 +1,7 @@
 # Tasarım: ilkeler, desenler, inceleme
 
 Bu belge 12. adımın çıktısıdır: SOLID ilkelerinin ve tasarım desenlerinin projedeki yeri, bilerek uygulanmayan
-desenler, anti-desen denetimi, testler ve inceleme sırasında bulunup düzeltilen hatalar. Problemin çerçevesi,
+desenler, anti-desen denetimi, testler, inceleme sırasında bulunup düzeltilen hatalar ve UML diyagramları. Problemin çerçevesi,
 başarı ölçütleri ve gereksinimler `ANALIZ.md`'de. Dayanak: dersin "Tasarım Desenleri" slaytları (GoF, SOLID,
 Registry, Repository, anti-desenler, desen seçim rehberi).
 
@@ -32,49 +32,9 @@ kuruyor (alan da taşıyabiliyorlar).
 
 ## 3. Desen haritası
 
-Öneri sınıfları (oklar kalıtım; `Vote` hepsine `GenericForeignKey` ile bağlanır):
+Öneri sınıfları, UML sınıf diyagramıyla (öteki diyagramlar bölüm 9'da):
 
-```mermaid
-classDiagram
-    class Commentable {
-        <<abstract>>
-        comments
-        is_open
-    }
-    class Hideable {
-        <<abstract>>
-        is_hidden
-        hidden_from()
-        set_hidden()
-    }
-    class BaseProposal {
-        <<abstract>>
-        finalize()
-        clean()
-        check_target()
-        prefill()
-        _accepted()
-        apply()
-        details()
-        offered_for()
-    }
-    class TopicProposal {
-        <<abstract>>
-        topic
-        check_target()
-    }
-    Commentable <|-- BaseProposal
-    Hideable <|-- BaseProposal
-    BaseProposal <|-- TopicProposal
-    BaseProposal <|-- TopicOpenProposal
-    BaseProposal <|-- ExpertProposal
-    TopicProposal <|-- TopicEditProposal
-    TopicProposal <|-- TopicCloseProposal
-    TopicProposal <|-- TopicDeleteProposal
-    TopicProposal <|-- TopicUndoProposal
-    TopicProposal <|-- RequestProposal
-    BaseProposal "1" --> "*" Vote : votes
-```
+![Sınıf diyagramı 2: öneriler](diyagramlar/sinif-2-oneriler.png)
 
 | Desen | Tür | Nerede | Roller ve neden |
 | --- | --- | --- | --- |
@@ -222,3 +182,64 @@ tip denetiminden geçti, telefonda denenecek.
 - Mobilde tekrar eden yükleme kodu ve otomatik test yok (tip denetimi `tsc --noEmit` var).
 - Sürekli entegrasyon (CI) yok: `manage.py test` ve `tsc --noEmit` elle çalıştırılıyor.
 - Takma ad taklidinde yalnızca harf büyüklüğü, i/ı/I/İ ve Kiril harfleri engelli; "l" ile "I" gibi benzerlikler değil.
+
+## 9. UML diyagramları
+
+Diyagramlar koddan çıkarıldı: sınıf, alan ve metot adları kodla aynı. Kaynaklar `diyagramlar/*.puml` (PlantUML,
+ortak görünüm `stil.iuml`), PNG'ler yanlarında. Gösterim slayttaki gibi: italik ad soyut sınıf, içi boş üçgen
+kalıtım, ◆ sahiplik (has-a), kesikli ok bağımlılık (uses). Ayrıca çokluklar (`1`, `0..1`, `0..*`), `+`/`#`
+görünürlük (`#`: Python'da `_` önekli), altı çizili sınıf düzeyi üye (sınıf özniteliği, `@classmethod`) ve `/ad`
+hesaplanan değer (`@property`). Model ya da akış değişince diyagram da güncellenir; PNG'ler
+`java -jar plantuml.jar -tpng diyagramlar/*.puml` ile (Graphviz gerekir) ya da VS Code'un PlantUML eklentisiyle
+üretilir.
+
+| Diyagram | Dosya | Ne gösteriyor |
+| --- | --- | --- |
+| Kullanım durumu | `kullanim-durumu` | 6 aktör ve 2 dış sistem, 26 kullanım durumu; `<<include>>`, `<<extend>>`, aktör ve kullanım durumu genellemesi. Gereksinimlerle eşleşmesi `ANALIZ.md` 11'de. |
+| Sınıf 1: içerik, oylar ve üyeler | `sinif-1-icerik` | Alan modeli: iki yetenek tabanı, ▲/▼ ve karar oyu, çokluklar |
+| Sınıf 2: öneriler | `sinif-2-oneriler` | Template Method, Registry, Repository, Command (bölüm 3) |
+| Sınıf 3: moderasyon | `sinif-3-moderasyon` | Şikayet ve yalnızca eklenen moderasyon kaydı |
+| Sıralama 1 | `sira-1-karar-oyu` | Telefondan karar oyu: jeton, `Vote.cast()`, kural 6 |
+| Sıralama 2 | `sira-2-sonuclanma` | Zamanlayıcı → `finalize()` → yeter sayı → koşullu UPDATE → `apply()` |
+| Sıralama 3 | `sira-3-kayit` | Kayıt, CAPTCHA, tek kullanımlık e-posta bağlantısı |
+| Sıralama 4 | `sira-4-gizleme` | Yöneticinin gizlemesi: yetki, işlem, şikayetler, kayıt |
+
+### Sınıf diyagramları
+
+İki soyut "yetenek" sınıfı (Java'daki arayüz gibi, ama alan da taşır) içerik türlerini birleştirir: `Commentable`
+yorum alabilen, `Hideable` moderasyonla gizlenebilen her şey. Konu ve öneri ikisinden de türer, yorum yalnızca
+gizlenebilir. Yorum bölümü, şikayet ve moderasyon hedefin türünü bilmeden çalışır (Liskov). ▲/▼ oyları
+(`UpDownVote`) ile karar oyu (`Vote`) ayrı sınıflar: ağırlık, gizlilik ve aktif üye sayımı farklı.
+
+![Sınıf diyagramı 1: içerik, oylar ve üyeler](diyagramlar/sinif-1-icerik.png)
+
+Moderasyon tarafında `Report` ve `ModAction` hedefe `Hideable` üzerinden bağlanır; yeni bir gizlenebilir içerik
+türü kendiliğinden şikayet edilebilir ve kayda düşer.
+
+![Sınıf diyagramı 3: moderasyon ve şikayet](diyagramlar/sinif-3-moderasyon.png)
+
+### Sıralama diyagramları
+
+Dört senaryo sistemin dört önemli yolunu uçtan uca gösterir. Hata yolları `break` (istek orada biter), seçenekler
+`alt`, koşullu adımlar `opt`, veritabanı işlemi `transaction.atomic` grubu. Örnekler gerçek adreslerle
+(`/api/proposals/close/7/vote/`).
+
+1. **Telefondan karar oyu.** Jeton imzası ve şifre özeti denetlenir, sonra sitedekiyle aynı `Vote.cast()`
+   çalışır: kural tek yerde. Oylama sürerken yanıtta yalnızca katılım var (kural 6).
+
+   ![Sıralama diyagramı 1](diyagramlar/sira-1-karar-oyu.png)
+
+2. **Önerinin sonuçlanması.** Şablon metot `finalize()`: `tally()` → `required_quorum()` → `_accepted()` → koşullu
+   UPDATE (öneri bir kez sonuçlanır) → `apply()` → `Topic.change()`. Uygulanamazsa "Uygulanamadı".
+
+   ![Sıralama diyagramı 2](diyagramlar/sira-2-sonuclanma.png)
+
+3. **Kayıt ve e-posta doğrulama.** CAPTCHA isteği veritabanı işleminin dışında; hesap ve e-posta tek işlemde
+   (e-posta gitmezse hesap da oluşmaz). Doğrulama bağlantısı girişten sonra geçersizleşir.
+
+   ![Sıralama diyagramı 3](diyagramlar/sira-3-kayit.png)
+
+4. **Yöneticinin gizlemesi.** Yetki iki katmanda (`moderator_required`, `_allowed`); gizleme, şikayetlerin
+   kapanması ve herkese açık kayıt tek işlemde. Çift gönderim gizlemeyi geri çevirmez.
+
+   ![Sıralama diyagramı 4](diyagramlar/sira-4-gizleme.png)

@@ -1,0 +1,218 @@
+@startuml
+!include stil.iuml
+hide circle
+hide empty members
+skinparam nodesep 55
+title Sınıf (class) diyagramı 2: öneriler (Template Method + Registry)
+
+abstract class Commentable
+abstract class Hideable {
+  + set_hidden(hidden: bool)
+}
+
+abstract class BaseProposal <<Template Method>> {
+  .. sınıf öznitelikleri (alt sınıf ezer) ..
+  + {static} SLUG: str = ''
+  + {static} TARGET: str [0..1]
+  + {static} LINK: str = ''
+  + {static} MORE: bool = False
+  + {static} FORM_FIELDS: tuple
+  + {static} WEIGHTED: bool = True
+  + {static} DUPLICATE_FIELDS: tuple
+  + {static} OWNER = 'proposer'
+  .. alanlar ..
+  + proposer: User [0..1]
+  + created_at: datetime
+  + voting_ends_at: datetime
+  + status: Status = VOTING
+  + quorum: int [0..1]
+  + applied_at: datetime [0..1]
+  + in_discussion: bool = False
+  + /deadline: datetime
+  + /target: Topic [0..1]
+  + /is_open: bool
+  + /results_visible: bool
+  .. şablon metotlar ..
+  + finalize()
+  + clean()
+  .. kancalar (alt sınıf ezer) ..
+  + prefill()
+  + check_target()
+  # _accepted(t: dict): bool
+  + {abstract} apply(): bool
+  .. diğer ..
+  + save()
+  + tally(): dict
+  + accepts_votes(): bool
+  + is_duplicate(): bool
+  + details(): list
+  + set_hidden(hidden: bool)
+  + {static} targets(): QuerySet
+  + {static} offered_for(topic): bool
+  + {static} ~_~_init_subclass~_~_()
+}
+
+enum Status <<enumeration>> {
+  VOTING
+  ACCEPTED
+  REJECTED
+  APPLIED
+  FAILED
+  CANCELLED
+}
+
+class ProposalQuerySet <<Repository>> {
+  + running(): QuerySet
+  + due(): QuerySet
+}
+
+class "voting.models" as Registry <<utility>> {
+  + {static} PROPOSALS: dict[str, type]
+  + {static} PROPOSAL_MODELS: tuple
+  + {static} active_proposals(): list
+  + {static} open_proposal_count(user): int
+  + {static} required_quorum(): int
+  + {static} active_member_count(): int
+  + {static} withdraw_running(user)
+}
+
+abstract class TopicProposal {
+  + {static} TARGET = 'topic'
+  + check_target()
+}
+
+class TopicOpenProposal {
+  + {static} SLUG = 'open'
+  + {static} TARGET = 'parent'
+  + parent: Topic [0..1]
+  + title: str
+  + description: str
+  + check_target()
+  + apply(): bool
+}
+
+class TopicEditProposal {
+  + {static} SLUG = 'edit'
+  + new_title: str
+  + new_description: str
+  + prefill()
+  + apply(): bool
+}
+
+class TopicCloseProposal {
+  + {static} SLUG = 'close'
+  + apply(): bool
+}
+
+class TopicDeleteProposal {
+  + {static} SLUG = 'delete'
+  + apply(): bool
+}
+
+class TopicUndoProposal {
+  + {static} SLUG = 'undo'
+  + action: {REOPEN | RESTORE}
+  + {static} targets(): QuerySet
+  + prefill()
+  + check_target()
+  + apply(): bool
+}
+
+class RequestProposal {
+  + {static} SLUG = 'request'
+  + title: str
+  + content: str
+  + discussion_ends_at: datetime
+  + /in_discussion: bool
+  + /deadline: datetime
+  + save()
+  + accepts_votes(): bool
+  + apply(): bool
+}
+
+class ExpertProposal {
+  + {static} SLUG = 'expert'
+  + {static} WEIGHTED = False
+  + action: {GRANT | REVOKE}
+  + reason: str
+  + check_target()
+  # _accepted(t: dict): bool
+  + apply(): bool
+}
+
+class Topic {
+  + is_closed: bool
+  + is_deleted: bool
+  + /is_open: bool
+  + change(**fields)
+}
+
+class User {
+  + role: Role
+  + /vote_weight: int
+  + /can_vote: bool
+}
+
+class Vote {
+  + choice: Choice
+  + weight: int
+  + {static} cast(proposal, voter, choice): Vote
+}
+
+' Yerleşim ipuçları (görünmez)
+Commentable -[hidden]> Hideable
+TopicOpenProposal -[hidden]> TopicProposal
+TopicProposal -[hidden]> ExpertProposal
+TopicEditProposal -[hidden]> TopicCloseProposal
+TopicCloseProposal -[hidden]> TopicDeleteProposal
+TopicDeleteProposal -[hidden]> TopicUndoProposal
+TopicUndoProposal -[hidden]> RequestProposal
+
+' Kalıtım
+Commentable <|-- BaseProposal
+Hideable <|-- BaseProposal
+BaseProposal <|-- TopicOpenProposal
+BaseProposal <|-- TopicProposal
+BaseProposal <|-- ExpertProposal
+TopicProposal <|-- TopicEditProposal
+TopicProposal <|-- TopicCloseProposal
+TopicProposal <|-- TopicDeleteProposal
+TopicProposal <|-- TopicUndoProposal
+TopicProposal <|-- RequestProposal
+
+' İlişkiler
+BaseProposal +-- Status
+ProposalQuerySet <.. BaseProposal : objects
+Registry <.. BaseProposal : kaydolur,\nrequired_quorum()
+Vote "0..*\nvotes" --* "1\nproposal" BaseProposal
+Topic "topic 1" <- "0..*" TopicProposal
+ExpertProposal "0..*" -> "1\ntarget_user" User
+
+note left of BaseProposal
+  <b>finalize()</b> (şablon metot): süre dolunca
+  tally() → required_quorum() → _accepted(t)
+  → koşullu UPDATE (bir kez sonuçlanır)
+  → apply(); False dönerse FAILED.
+  <b>clean()</b>: oy hakkı → açık öneri sınırı
+  → check_target() → is_duplicate().
+end note
+
+note bottom of Registry
+  <b>Registry</b>: SLUG tanımlayan her alt sınıf
+  ~_~_init_subclass~_~_() ile PROPOSALS'a kendini
+  kaydeder. URL, form, admin, panel ve API bu
+  listeyi kullanır: yeni tip = yalnızca alt sınıf.
+end note
+
+note bottom of Topic
+  change(): kabul edilen önerinin
+  apply()'ı çağırır. Command deseni,
+  alıcı (receiver) Topic.
+end note
+
+legend right
+  Gösterim: + public, # korumalı (Python'da _ önekli); //italik// ad soyut sınıf ya da metot;
+  __altı çizili__ sınıf düzeyi (sınıf özniteliği, @classmethod); /ad hesaplanan değer (@property);
+  ◆ sahiplik (has-a), ▷ kalıtım (is-a), ⊕ iç içe tanım, kesikli ok bağımlılık (uses).
+endlegend
+@enduml

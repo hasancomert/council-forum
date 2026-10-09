@@ -1,0 +1,95 @@
+@startuml
+!include stil.iuml
+hide circle
+hide empty members
+title Sınıf (class) diyagramı 3: moderasyon ve şikayet
+
+abstract class Hideable {
+  + {static} OWNER: str = 'author'
+  + is_hidden: bool = False
+  + /owner_id: int [0..1]
+  + /owner: User [0..1]
+  + hidden_from(user): bool
+  + set_hidden(hidden: bool)
+  + can_be_reported_by(user): bool
+}
+
+class Topic
+class Comment
+abstract class BaseProposal {
+  + {static} OWNER = 'proposer'
+  + set_hidden(hidden: bool)
+}
+
+class Report {
+  + created_at: datetime
+  + is_open: bool = True
+}
+
+class ModAction <<yalnızca eklenir>> {
+  + kind: Kind
+  + reason: Reason
+  + note: str
+  + until: datetime [0..1]
+  + created_at: datetime
+  + save()
+  + delete()
+}
+
+enum Kind <<enumeration>> {
+  HIDE
+  UNHIDE
+  BAN
+  UNBAN
+  CLOSE
+  REOPEN
+}
+
+enum Reason <<enumeration>> {
+  TROLL
+  ABUSE
+  FAKE
+}
+
+class User {
+  + is_active: bool
+  + is_moderator: bool
+  + banned_until: datetime [0..1]
+  + /is_banned: bool
+  + /can_vote: bool
+}
+
+Hideable <|-- Topic
+Hideable <|-- Comment
+Hideable <|-- BaseProposal
+
+Hideable "1\ntarget" <-- "0..*" Report
+Hideable "0..1\ntarget" <-- "0..*" ModAction
+ModAction +-- Kind
+ModAction +-- Reason
+Report "0..*" --> "1" User : reporter
+ModAction "0..*" --> "1" User : moderator
+ModAction "0..*" --> "0..1" User : user
+
+note bottom of Report
+  Şikayet eden hiçbir sayfada ve
+  admin'de görünmez; içerik başına
+  tek şikayet {unique}.
+end note
+
+note top of ModAction
+  Herkese açık kayıt (mod/log/):
+  save() yalnızca ekler, delete() hata
+  verir; kayıttaki üye silinmez (PROTECT).
+end note
+
+note bottom of BaseProposal
+  set_hidden(True): önce finalize(),
+  süren oylama iptal (CANCELLED).
+end note
+
+legend right
+  Gösterim: + public; //italik// ad soyut sınıf; __altı çizili__ sınıf düzeyi;
+  /ad hesaplanan değer (@property); ▷ kalıtım (is-a), ⊕ iç içe tanım.
+endlegend
+@enduml

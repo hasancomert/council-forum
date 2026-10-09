@@ -52,6 +52,9 @@ Tarayıcı (site, PWA)            ── HTML sayfalar, oturum çerezi + CSRF �
   - Yerelde süresi dolan öneri sonuçlanmıyordu.
 - **Testler:** 191 test. Her bileşene sahte nesneyle birim testi var (ör. sahte `urlopen`, sahte kullanıcı).
   Mutasyon testi, testlerin bilerek bozulmuş kodu ne oranda yakaladığını ölçüyor (`TASARIM.md` 6).
+- **UML** (`diyagramlar/`, PlantUML): kullanım durumu (`ANALIZ.md` 11), 3 sınıf ve 4 sıralama diyagramı
+  (`TASARIM.md` 9). Sunumda gösterilecek ikisi: sınıf diyagramı 2 (öneriler: şablon metot ve kancalar) ve sıralama
+  diyagramı 1 (telefondan oy: site ile aynı `Vote.cast()`).
 
 ## Demo hazırlığı
 
@@ -94,3 +97,5 @@ Tarayıcı (site, PWA)            ── HTML sayfalar, oturum çerezi + CSRF �
   orada.
 - **Testler gerçekten hata yakalıyor mu?** Mutasyon testi: kod bilerek bozuldu (ör. "eşitlikte kabul",
   "silme uygulanmıyor"); bozulanların çoğunu testler yakaladı (`TASARIM.md` 6).
+- **Diyagramlar kodla uyumlu mu?** Koddan çıkarıldı, adlar aynı. PlantUML metin olduğu için kodla birlikte
+  sürümlenir; model değişince `.puml` da değişir (`TASARIM.md` 9).

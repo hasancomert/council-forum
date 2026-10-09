@@ -1,0 +1,70 @@
+@startuml
+!include stil.iuml
+skinparam style strictuml
+autonumber
+hide footbox
+title Sıralama (sequence) diyagramı 4: yöneticinin bir yorumu gizlemesi
+
+actor "Yönetici" as Y
+boundary "Tarayıcı" as B
+control "@moderator_required" as MR
+control "content()\n(moderation/views.py)" as CV
+participant "form: ActionForm" as F
+entity "target: Comment" as T
+entity "Report" as R
+entity "ModAction" as M
+database "Veritabanı" as DB
+
+Y -> B : Şikayetler → "Gizle"\n(gerekçe: trollük, herkese açık not)
+activate B
+B -> MR : POST /mod/<ct>/<pk>/\n{hide: 1, reason: "troll", note}
+activate MR
+MR -> MR : giriş yapılmış mı, user.is_moderator
+break yönetici değil
+  MR --> B : 403
+end
+MR -> CV : content(request, ct, pk)
+activate CV
+CV -> DB : get_target(ct, pk, Hideable)
+DB --> CV : target
+CV -> T : owner
+activate T
+T --> CV : yorumun yazarı
+deactivate T
+CV -> CV : _allowed(yönetici, sahibi)
+break sahibi kendisi, başka yönetici ya da süper kullanıcı
+  CV --> B : 403 PermissionDenied
+end
+CV -> F : is_valid()
+activate F
+F --> CV : True (gerekçe listede, not dolu)
+deactivate F
+alt içerik görünür (hide=1, is_hidden=False)
+  group transaction.atomic
+    CV -> T : set_hidden(True)
+    activate T
+    T -> DB : UPDATE is_hidden=True
+    deactivate T
+    CV -> R : filter(içerik, is_open=True).update(is_open=False)
+    activate R
+    R -> DB : UPDATE: açık şikayetler kapanır
+    deactivate R
+    CV -> M : _log(): objects.create(moderator, user=sahibi,\ntarget, kind=HIDE, reason, note)
+    activate M
+    M -> DB : INSERT (kayıt yalnızca eklenir)
+    deactivate M
+  end
+  CV --> B : 302 → içerik, "Gizlendi."
+else içerik zaten gizli (çift gönderim ya da başka yönetici)
+  CV --> B : 302 → içerik, "İçerik zaten gizli." (işlem ve kayıt yok)
+end
+deactivate CV
+deactivate MR
+B --> Y : yorum yerinde "moderasyonla gizlendi";\nişlem mod/log/'da herkese açık
+deactivate B
+
+note over T, R
+  Öneri gizlenirse BaseProposal.set_hidden() önce finalize()
+  çağırır, süren oylamayı iptal eder (CANCELLED).
+end note
+@enduml

@@ -166,20 +166,27 @@ Sağ üst köşedekilere bugünden önlem yazıldı.
 
 ## 11. Gereksinimler ve izlenebilirlik
 
-İşlevsel gereksinimler, her biri kodu ve onu doğrulayan testle:
+Kim sistemle ne yapıyor: kullanım durumu diyagramı (kaynağı `diyagramlar/kullanim-durumu.puml`; sınıf ve sıralama
+diyagramları `TASARIM.md` 9'da). Aktörler genelleme okuyla birbirinden türer: üye ziyaretçinin yaptığı her şeyi
+yapar, bilirkişi ve yönetici de üyenin. `<<include>>` her seferinde yapılan alt adım (kayıtta CAPTCHA),
+`<<extend>>` yalnızca koşul tutunca yapılan (kabul edilen öneriyi uygulamak).
 
-| No | Gereksinim | Kod | Test |
-| --- | --- | --- | --- |
-| İG-1 | Kayıt e-posta doğrulaması ve CAPTCHA ister | `accounts/views.py`, `accounts/forms.py` | `test_signup_then_activate`, `test_captcha_required` |
-| İG-2 | Oy ve öneri için hesap en az 7 günlük olmalı | `User.can_vote` | `test_weight_and_min_age`, `test_new_account_cannot_propose` |
-| İG-3 | Öneri, yeter sayı ve ağırlıklı çoğunlukla sonuçlanır; eşitlikte ret | `BaseProposal.finalize()` | `test_weighted_majority_accepts_and_applies`, `test_tie_rejects`, `test_quorum_not_met_rejects` |
-| İG-4 | B statüsü 2/3 evet ister, bu oylamada herkesin oyu 1 | `ExpertProposal` | `test_expert_two_thirds_unweighted` |
-| İG-5 | İstek 3 gün tartışılır, sonra 3 gün oylanır | `RequestProposal` | `test_request_discussion_then_voting` |
-| İG-6 | Oylama sürerken yalnızca katılım görünür | `results_visible` | `test_detail_hides_result_until_voting_ends`, `test_list_and_detail_keep_results_secret_until_the_end` |
-| İG-7 | Kapalı konu yorum ve öneri almaz; geri alma oylamayla | `Topic.is_open`, `TopicUndoProposal` | `test_closed_topic_takes_undo_but_not_edit`, `test_undo_reopen` |
-| İG-8 | Kişi başı en fazla 3 açık öneri; reddedilen 30 gün açılamaz | `BaseProposal.clean()` | `test_open_proposal_limit`, `test_rejection_cooldown_counts_from_voting_end` |
-| İG-9 | Yönetici yalnızca moderasyon yapar; her işlem herkese açık kayda düşer | `moderation/views.py`, `ModAction` | `test_hide_needs_reason_and_note_and_is_logged`, `test_log_is_append_only_public_and_filterable` |
-| İG-10 | Mobil uygulama sitenin kurallarını aynen uygular | `api/views.py` | `test_vote_uses_site_rules`, `test_vote_needs_account_age` |
+![Kullanım durumu diyagramı](diyagramlar/kullanim-durumu.png)
+
+İşlevsel gereksinimler, her biri kullanım durumu, kod ve onu doğrulayan testle:
+
+| No | Gereksinim | Kullanım durumu | Kod | Test |
+| --- | --- | --- | --- | --- |
+| İG-1 | Kayıt e-posta doğrulaması ve CAPTCHA ister | Kayıt ol (CAPTCHA, e-posta) | `accounts/views.py`, `accounts/forms.py` | `test_signup_then_activate`, `test_captcha_required` |
+| İG-2 | Oy ve öneri için hesap en az 7 günlük olmalı | Karar oyu ver, Öneri aç | `User.can_vote` | `test_weight_and_min_age`, `test_new_account_cannot_propose` |
+| İG-3 | Öneri, yeter sayı ve ağırlıklı çoğunlukla sonuçlanır; eşitlikte ret | Önerileri sonuçlandır | `BaseProposal.finalize()` | `test_weighted_majority_accepts_and_applies`, `test_tie_rejects`, `test_quorum_not_met_rejects` |
+| İG-4 | B statüsü 2/3 evet ister, bu oylamada herkesin oyu 1 | B statüsüne başvur | `ExpertProposal` | `test_expert_two_thirds_unweighted` |
+| İG-5 | İstek 3 gün tartışılır, sonra 3 gün oylanır | İstek aç | `RequestProposal` | `test_request_discussion_then_voting` |
+| İG-6 | Oylama sürerken yalnızca katılım görünür | Görüntüle, Karar oyu ver | `results_visible` | `test_detail_hides_result_until_voting_ends`, `test_list_and_detail_keep_results_secret_until_the_end` |
+| İG-7 | Kapalı konu yorum ve öneri almaz; geri alma oylamayla | Yorum yaz, Öneri aç | `Topic.is_open`, `TopicUndoProposal` | `test_closed_topic_takes_undo_but_not_edit`, `test_undo_reopen` |
+| İG-8 | Kişi başı en fazla 3 açık öneri; reddedilen 30 gün açılamaz | Öneri aç (kuralları denetle) | `BaseProposal.clean()` | `test_open_proposal_limit`, `test_rejection_cooldown_counts_from_voting_end` |
+| İG-9 | Yönetici yalnızca moderasyon yapar; her işlem herkese açık kayda düşer | Gizle, Engelle, Kapat (kayda yaz) | `moderation/views.py`, `ModAction` | `test_hide_needs_reason_and_note_and_is_logged`, `test_log_is_append_only_public_and_filterable` |
+| İG-10 | Mobil uygulama sitenin kurallarını aynen uygular | Hepsi (site + uygulama) | `api/views.py` | `test_vote_uses_site_rules`, `test_vote_needs_account_age` |
 
 İşlevsel olmayan gereksinimler:
 
@@ -201,7 +208,7 @@ Dersin teslim kuralı gereği ("YZ kullandıysanız her teslimde YZ kullanım be
   tartışılması); Claude Sonnet alt-ajanları (bu revizyonda projenin her ilke için ayrı ayrı incelenmesi).
 - **İnsanın yaptıkları:** Problem ve kurallar (9 kural, roller); her adımın planını onaylamak; tasarım kararları;
   telefonda deneme; teslim.
-- **YZ'nin yaptıkları:** Kod, testler, belgeler, inceleme raporları. Her adım önce plan olarak sunuldu, onaydan sonra
+- **YZ'nin yaptıkları:** Kod, testler, belgeler, inceleme raporları, UML diyagramları. Her adım önce plan olarak sunuldu, onaydan sonra
   yazıldı.
 - **Doğrulama (Sunum 2'deki kontrol listesi):**
   - Değişiklikler `python manage.py test` geçtikten sonra commit'lendi.
@@ -213,3 +220,4 @@ Dersin teslim kuralı gereği ("YZ kullandıysanız her teslimde YZ kullanım be
   - YZ'nin yazdığı testler de gözden geçirildi.
   - Alt-ajanların her hata iddiası ayrıca bir testle yeniden üretildi; üretilemeyen "hata" sayılmadı. Testlerin
     hatayı yakalama gücü mutasyon testiyle ölçüldü (`TASARIM.md` 1 ve 6).
+  - UML diyagramları koddan çıkarıldı; sınıf, alan, metot ve adres adları kodla tek tek karşılaştırıldı.

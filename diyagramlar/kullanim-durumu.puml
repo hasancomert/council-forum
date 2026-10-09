@@ -1,0 +1,107 @@
+@startuml
+!include stil.iuml
+left to right direction
+skinparam packageStyle rectangle
+title Kullanım durumu (use case) diyagramı: oylamayla yönetilen forum
+
+actor "Ziyaretçi" as Ziyaretci
+actor "Üye (A)\noy ağırlığı 1" as Uye
+actor "Bilirkişi (B)\noy ağırlığı 10" as Bilirkisi
+actor "Yönetici" as Yonetici
+actor "Kurucu" as Kurucu
+actor "Zamanlayıcı\n(15 dakikada bir)" as Zamanlayici <<sistem>>
+
+Ziyaretci <|- Uye
+Uye <|- Bilirkisi
+Uye <|- Yonetici
+Yonetici <|- Kurucu
+
+rectangle "Forum (web sitesi + mobil uygulama, aynı sunucu)" {
+  package "Gezinme ve üyelik" {
+    usecase "Konuları, önerileri ve\nsonuçları görüntüle" as Gez
+    usecase "Moderasyon kaydını\ngörüntüle" as Log
+    usecase "Kayıt ol" as Kayit
+    usecase "CAPTCHA'yı geç" as Captcha
+    usecase "E-postayı doğrula" as Eposta
+    usecase "Giriş yap" as Giris
+    usecase "Hesabını sil" as Sil
+  }
+  package "Katılım" {
+    usecase "Yorum yaz / yanıtla" as Yorum
+    usecase "▲/▼ oy ver" as UpDown
+    usecase "Şikayet et" as Sikayet
+  }
+  package "Karar" {
+    usecase Oneri as "Öneri aç"
+    usecase "Kuralları denetle\n(oy hakkı, en çok 3 açık\nöneri, 30 gün ret yasağı)" as Kural
+    usecase "İstek aç" as Istek
+    usecase "B statüsüne başvur" as Bstatu
+    usecase KararOyu as "Karar oyu ver
+--
+extension points
+oy zaten verilmiş"
+    usecase "Oyunu değiştir" as Degistir
+    usecase Sonuc as "Süresi dolan önerileri
+sonuçlandır
+--
+extension points
+kabul edildi"
+    usecase "Yeter sayı ve\nçoğunluğu hesapla" as Hesap
+    usecase "Kabul edileni uygula" as Uygula
+  }
+  package "Moderasyon ve kuruluş" {
+    usecase "Şikayetleri incele" as Kuyruk
+    usecase "İçeriği gizle /\ngizlemeyi kaldır" as Gizle
+    usecase "Üyeyi engelle /\nengeli kaldır" as Engel
+    usecase "Sahte hesabı kapat /\nyeniden aç" as Kapat
+    usecase "Moderasyon\nkaydına yaz" as KayitYaz
+    usecase "İlk ana konuları aç\n(yalnızca kuruluşta)" as Ilk
+    usecase "Yöneticileri işaretle\n(yalnızca kuruluşta)" as Yon
+  }
+}
+
+actor "Cloudflare\nTurnstile" as CF <<dış sistem>>
+actor "E-posta\nsunucusu" as Mail <<dış sistem>>
+
+Ziyaretci -- Gez
+Ziyaretci -- Log
+Ziyaretci -- Kayit
+Ziyaretci -- Giris
+Kayit ..> Captcha : <<include>>
+Kayit ..> Eposta : <<include>>
+Captcha ------ CF
+Eposta ------ Mail
+
+Uye -- Sil
+Uye -- Yorum
+Uye -- UpDown
+Uye -- Sikayet
+Uye -- Oneri
+Uye -- KararOyu
+Oneri ..> Kural : <<include>>
+Oneri <|-- Istek
+Oneri <|-- Bstatu
+KararOyu <.. Degistir : <<extend>>
+
+Sonuc ..> Hesap : <<include>>
+Sonuc <.. Uygula : <<extend>>
+Zamanlayici -- Sonuc
+
+Yonetici -- Kuyruk
+Yonetici -- Gizle
+Yonetici -- Engel
+Yonetici -- Kapat
+Gizle ..> KayitYaz : <<include>>
+Engel ..> KayitYaz : <<include>>
+Kapat ..> KayitYaz : <<include>>
+
+Kurucu -- Ilk
+Kurucu -- Yon
+
+legend right
+  Mobil uygulamada kayıt, hesap silme ve
+  moderasyon sitenin sayfasında açılır.
+  Öneri sayfası açılınca da süresi dolan
+  öneri sonuçlanır (yerelde zamanlayıcı yok).
+endlegend
+@enduml

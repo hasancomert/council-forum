@@ -1,0 +1,163 @@
+@startuml
+!include stil.iuml
+hide circle
+hide empty members
+title Sınıf (class) diyagramı 1: içerik, oylar ve üyeler
+
+abstract class AbstractUser <<Django>> {
+  + password: str
+  + last_login: datetime [0..1]
+  + date_joined: datetime
+  + is_active: bool
+  + is_staff: bool
+  + check_password(raw): bool
+  + get_session_auth_hash(): str
+}
+
+class User {
+  + username: str {unique}
+  + first_name: str
+  + last_name: str
+  + email: str {unique}
+  + role: Role = MEMBER
+  + is_moderator: bool = False
+  + banned_until: datetime [0..1]
+  + terms_accepted_at: datetime [0..1]
+  + deleted_at: datetime [0..1]
+  + /vote_weight: int
+  + /is_banned: bool
+  + /can_post: bool
+  + /can_vote: bool
+  + anonymize()
+  + {static} purge_unverified()
+}
+
+enum Role <<enumeration>> {
+  MEMBER = 'A'
+  EXPERT = 'B'
+}
+
+abstract class Commentable {
+  + {abstract} /is_open: bool
+}
+
+abstract class Hideable {
+  + {static} OWNER: str = 'author'
+  + is_hidden: bool = False
+  + /owner: User [0..1]
+  + hidden_from(user): bool
+  + set_hidden(hidden: bool)
+  + can_be_reported_by(user): bool
+}
+
+class Topic {
+  + title: str
+  + description: str
+  + created_at: datetime
+  + is_closed: bool = False
+  + is_deleted: bool = False
+  + score: int = 0
+  + /is_locked: bool
+  + /is_visible: bool
+  + /is_open: bool
+  + can_be_voted_by(user): bool
+  + pending(): list
+  + change(**fields)
+}
+
+class TopicQuerySet <<Repository>> {
+  + existing(): QuerySet
+  + unhidden(): QuerySet
+  + visible(): QuerySet
+  + ranked(sort: str): QuerySet
+}
+
+class Comment {
+  + body: str
+  + created_at: datetime
+  + edited_at: datetime [0..1]
+  + is_deleted: bool = False
+  + score: int = 0
+  + can_be_voted_by(user): bool
+  + soft_delete()
+}
+
+abstract class UpDownVote {
+  + {static} TARGET: str
+  + value: int {+1 | −1}
+  + voted_at: datetime
+  + {static} cast(target, voter, value): int
+  + {static} withdraw_all(voter)
+  + {static} withdraw_everywhere(voter)
+}
+
+class CommentVote {
+  + {static} TARGET = 'comment'
+}
+
+class TopicVote {
+  + {static} TARGET = 'topic'
+}
+
+abstract class BaseProposal {
+  + status: Status
+  + voting_ends_at: datetime
+  + quorum: int [0..1]
+  + finalize()
+  + tally(): dict
+  + {abstract} apply(): bool
+}
+
+class Vote {
+  + choice: Choice
+  + weight: int
+  + voted_at: datetime
+  + {static} cast(proposal, voter, choice): Vote
+}
+
+enum Choice <<enumeration>> {
+  YES
+  NO
+}
+
+' Yerleşim ipuçları (görünmez): üst satırda tabanlar, ikinci satırda içerikler soldan sağa
+Commentable -[hidden]> Hideable
+Topic -[hidden]> UpDownVote
+UpDownVote -[hidden]> Comment
+Comment -[hidden]> BaseProposal
+
+' Kalıtım
+AbstractUser <|-- User
+Commentable <|-- Topic
+Hideable <|-- Topic
+Hideable <|-- Comment
+Commentable <|-- BaseProposal
+Hideable <|-- BaseProposal
+UpDownVote <|-- CommentVote
+UpDownVote <|-- TopicVote
+
+' İç içe tanımlar (User.Role, Vote.Choice)
+User +-- Role
+Vote +-- Choice
+
+' Sahiplik (has-a) ve ilişkiler
+Topic "0..1\nparent" -- "0..*\nchildren" Topic
+Topic ..> TopicQuerySet : objects
+Commentable "1\ntarget" *-- "0..*\ncomments" Comment
+Comment "0..1\nparent" -- "0..*\nreplies" Comment
+Comment "1" *-- "0..*\nvotes" CommentVote
+Topic "1" *-- "0..*\nvotes" TopicVote
+BaseProposal "1\nproposal" *-- "0..*\nvotes" Vote
+
+Topic "0..*" --> "0..1\nauthor" User
+Comment "0..*" --> "0..1\nauthor" User
+BaseProposal "0..*" --> "0..1\nproposer" User
+Vote "0..*" --> "1\nvoter" User
+UpDownVote "0..*" --> "1\nvoter" User
+
+legend right
+  Gösterim: + public, # korumalı (Python'da _ önekli); //italik// ad soyut sınıf ya da metot;
+  __altı çizili__ sınıf düzeyi (sınıf özniteliği, @classmethod); /ad hesaplanan değer (@property);
+  ◆ sahiplik (has-a), ▷ kalıtım (is-a), ⊕ iç içe tanım, kesikli ok bağımlılık (uses).
+endlegend
+@enduml
