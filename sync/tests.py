@@ -1,4 +1,5 @@
 import json
+import zlib
 from unittest import skipUnless
 
 from django.conf import settings
@@ -11,17 +12,41 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from accounts.models import User
+from comments.models import Comment, CommentVote
+from moderation.models import ModAction
 from topics.models import Topic, TopicVote
+from voting.models import TopicCloseProposal, Vote
 from voting.tests import make_user
 
 from . import capture
-from .models import Change, Counter, State
+from .models import Change, Counter, Received, State
+from .replay import apply, pack
 from .tables import columns, digest, fingerprint, label, scored, tables
 
 SQLITE = skipUnless(connection.vendor == 'sqlite', 'eşitleme yalnızca SQLite')
 BASE = settings.SYNC['PK_BASE']
 NODE1 = {**settings.SYNC, 'NODE': 1, 'KEY': 'k'}
 NODE2 = {**settings.SYNC, 'NODE': 2, 'KEY': 'k'}
+
+
+def message(change, rid=None, seen=None, data=True, **values):
+    """Yakalanmış bir değişiklikten karşıdan gelmiş gibi mesaj: alanlar sütun adıyla değişir; data=None silmedir."""
+    index, old_rid, old_seen, row = json.loads(zlib.decompress(pack(change)))
+    row = None if data is None else [values.get(c, v) for c, v in zip(columns(change.tbl), row)]
+    return zlib.compress(json.dumps([index, rid or old_rid, old_seen if seen is None else seen, row]).encode())
+
+
+def snapshot():
+    out = {}
+    with connection.cursor() as cursor:
+        for table in tables():
+            names = ', '.join(f'"{c}"' for c in ['id', *columns(table)])
+            cursor.execute(f'SELECT {names} FROM "{table}" ORDER BY id')
+            out[table] = cursor.fetchall()
+        for table in ('comments_comment', 'topics_topic'):
+            cursor.execute(f'SELECT id, score FROM "{table}" ORDER BY id')
+            out[f'{table}.score'] = cursor.fetchall()
+    return out
 
 
 @SQLITE
@@ -150,7 +175,7 @@ class PkTests(SyncTestCase):
         User.objects.create(pk=BASE + 5, username='uzak', email='u@x.invalid', first_name='', last_name='')
         self.assertEqual(make_user('veli').pk, ali.pk + 1)
 
-    def test_counters_are_per_node(self):  # veritabanı 1. düğümden kopyalandıktan sonra 2. düğüm kendi aralığını kullanır
+    def test_counters_are_per_node(self):  # veritabanı 1. düğümden kopyalanınca 2. düğüm kendi aralığını kullanır
         make_user('ali')
         with self.settings(SYNC=NODE2):
             self.assertEqual(make_user('veli').pk, BASE)
@@ -163,3 +188,111 @@ class PkTests(SyncTestCase):
     def test_unsynced_models_are_untouched(self):
         ContentType.objects.create(app_label='x', model='y')
         self.assertFalse(Counter.objects.filter(key__contains='content_type').exists())
+
+
+class ReplayTests(SyncTestCase):
+    def last(self, table):
+        return Change.objects.filter(tbl=table).last()
+
+    def build_forum(self):
+        ali, veli = make_user('ali'), make_user('veli', 'B')
+        main = Topic.objects.create(title='Ana konu', description='Açıklama', author=ali)
+        sub = Topic.objects.create(title='Alt konu', parent=main, author=veli)
+        long = ('ğüşiöçİ "tırnak" \\ ters\nsatır 🙂 ' * 200)[:5000]
+        first = Comment.objects.create(target=main, author=ali, body=long)
+        reply = Comment.objects.create(target=main, author=veli, body='yanıt', parent=first)
+        CommentVote.cast(first, veli, 1)
+        CommentVote.cast(reply, ali, -1)
+        TopicVote.cast(main, veli, 1)
+        TopicVote.cast(sub, ali, 1)
+        TopicVote.cast(sub, ali, 1)  # ikinci basış oyu geri alır: satır silinir
+        reply.refresh_from_db()  # düzenleme görünümü gibi güncel satırdan: bellekteki eski puan (0) geri yazılmasın
+        reply.body, reply.edited_at = 'düzenlendi', timezone.now()
+        reply.save()
+        proposal = TopicCloseProposal.objects.create(proposer=ali, topic=sub)
+        Vote.cast(proposal=proposal, voter=veli, choice='yes')
+        Vote.cast(proposal=proposal, voter=veli, choice='no')
+        ModAction.objects.create(moderator=ali, user=veli, kind='hide', reason='troll', note='not',
+                                 content_type=ContentType.objects.get_for_model(Comment), object_id=reply.pk)
+        reply.set_hidden(True)
+
+    def test_log_replays_into_emptied_tables(self):
+        self.build_forum()
+        before = snapshot()
+        State.objects.filter(pk=1).update(applying=True)
+        with connection.cursor() as cursor:
+            for table in tables():
+                cursor.execute(f'DELETE FROM "{table}"')
+        State.objects.filter(pk=1).update(applying=False)
+        with self.settings(SYNC=NODE2):  # hakem olmayan düğüm geleni koşulsuz uygular
+            for change in Change.objects.all():
+                self.assertEqual(apply(change.id, pack(change)), '')
+        self.assertEqual(snapshot(), before)
+        self.assertEqual(Comment.objects.get(parent=None).body, ('ğüşiöçİ "tırnak" \\ ters\nsatır 🙂 ' * 200)[:5000])
+
+    def test_peer_row_is_created_with_local_defaults_and_no_echo(self):
+        make_user('ali')
+        note = apply(1, message(self.last('accounts_user'), rid=BASE + 1, username='uzak'))
+        peer = User.objects.get(pk=BASE + 1)
+        self.assertEqual((note, peer.username, peer.password, peer.email, peer.first_name, peer.is_staff),
+                         ('', 'uzak', '!', f'{BASE + 1}@uzak.invalid', '', False))
+        self.assertEqual(State.load().applied, 1)
+        self.assertEqual(Received.objects.get().note, '')
+        self.assertFalse(Change.objects.filter(rid=BASE + 1).exists())
+
+    def test_update_keeps_local_columns(self):
+        ali = make_user('ali')
+        change = self.last('accounts_user')
+        apply(1, message(change, seen=change.id, role='B'))
+        ali.refresh_from_db()
+        self.assertEqual((ali.role, ali.email, ali.first_name), ('B', 'ali@example.com', 'Ad'))
+
+    def test_arbiter_keeps_its_version_on_conflict(self):
+        topic = Topic.objects.create(title='Yerel', author=make_user('ali'))
+        incoming = message(self.last('topics_topic'), seen=0, title='Karşı')
+        self.assertEqual(apply(1, incoming), 'çakışma')
+        topic.refresh_from_db()
+        self.assertEqual((topic.title, State.load().applied, Received.objects.get().note), ('Yerel', 1, 'çakışma'))
+        with self.settings(SYNC=NODE2):
+            self.assertEqual(apply(2, incoming), '')
+        topic.refresh_from_db()
+        self.assertEqual(topic.title, 'Karşı')
+
+    def test_username_clash_gets_suffix_every_time(self):
+        make_user('ali')
+        change = self.last('accounts_user')
+        self.assertEqual(apply(1, message(change, rid=BASE + 3)), 'ad çakışması')
+        self.assertEqual(User.objects.get(pk=BASE + 3).username, f'ali-{BASE + 3}')
+        self.assertEqual(apply(2, message(change, rid=BASE + 3, role='B')), 'ad çakışması')
+        peer = User.objects.get(pk=BASE + 3)
+        self.assertEqual((peer.username, peer.role), (f'ali-{BASE + 3}', 'B'))
+
+    def test_votes_recompute_score(self):
+        ali, veli, can = make_user('ali'), make_user('veli'), make_user('can')
+        topic = Topic.objects.create(title='Bir', author=ali)
+        comment = Comment.objects.create(target=topic, author=ali, body='x')
+        CommentVote.cast(comment, veli, 1)
+        vote = self.last('comments_commentvote')
+        apply(1, message(vote, rid=BASE + 1, seen=vote.id, voter_id=can.pk))
+        comment.refresh_from_db()
+        self.assertEqual(comment.score, 2)
+        apply(2, message(vote, rid=BASE + 1, data=None))
+        comment.refresh_from_db()
+        self.assertEqual(comment.score, 1)
+
+    def test_unappliable_message_does_not_stop_stream(self):
+        ali, veli = make_user('ali'), make_user('veli')
+        topic = Topic.objects.create(title='Bir', author=ali)
+        comment = Comment.objects.create(target=topic, author=ali, body='x')
+        CommentVote.cast(comment, veli, 1)
+        vote = self.last('comments_commentvote')
+        self.assertEqual(apply(1, message(vote, rid=BASE + 1)), 'uygulanamadı')  # aynı (yorum, üye), başka pk
+        self.assertEqual((State.load().applied, Received.objects.first().note), (1, 'uygulanamadı'))
+        self.assertEqual(apply(2, message(self.last('accounts_user'), rid=BASE + 9, username='uzak')), '')
+        self.assertEqual(State.load().applied, 2)
+
+    def test_cache_is_cleared(self):
+        make_user('ali')
+        cache.set('x', 1)
+        apply(1, message(self.last('accounts_user'), rid=BASE + 1, username='uzak'))
+        self.assertIsNone(cache.get('x'))
