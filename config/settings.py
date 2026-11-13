@@ -63,13 +63,17 @@ def database(url, name='db.sqlite3', shared=False):
 
 
 def forum_overrides(text):
-    """FORUM_OVERRIDES: FORUM'un üzerine yazılan JSON nesnesi (demoda kısa süreler; örnek .env.example'da)."""
+    """FORUM_OVERRIDES: FORUM'un üzerine yazılan JSON nesnesi (demoda kısa süreler; örnek .env.example'da).
+    Yalnızca FORUM'daki adlar: yazım hatası sessizce yok sayılmasın (FORUM aşağıda tanımlı, çağrıldığında var).
+    """
     try:
         value = json.loads(text or '{}')
     except ValueError:  # bozuk JSON (JSONDecodeError bir ValueError)
         value = None
     if not isinstance(value, dict):
         raise ImproperlyConfigured('FORUM_OVERRIDES geçerli bir JSON nesnesi olmalı.')
+    if unknown := value.keys() - FORUM.keys():
+        raise ImproperlyConfigured(f"FORUM_OVERRIDES'ta bilinmeyen ayar: {', '.join(sorted(unknown))}.")
     return value
 
 

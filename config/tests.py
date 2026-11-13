@@ -74,6 +74,10 @@ class SyncSettingsTests(SimpleTestCase):
             with self.assertRaisesMessage(ImproperlyConfigured, 'FORUM_OVERRIDES'):
                 forum_overrides(bad)
 
+    def test_unknown_forum_override_rejected(self):  # yazım hatası sessizce yok sayılmasın
+        with self.assertRaisesMessage(ImproperlyConfigured, 'QUORUM_MINN'):
+            forum_overrides('{"QUORUM_MIN": 2, "QUORUM_MINN": 2}')
+
     def test_sqlite_name_and_shared_options(self):
         self.assertEqual(database('')['NAME'], BASE_DIR / 'db.sqlite3')
         self.assertNotIn('OPTIONS', database(''))
