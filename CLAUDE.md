@@ -45,8 +45,8 @@ Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), ileride PW
 - Ayarlar ortam değişkeninden; geliştirmede kökteki `.env` (`Copy-Item .env.example .env`, içinde `DEBUG=1` yeter).
   Önbellek tablosu bir kez: `python manage.py createcachetable`.
 - İnternetsiz mod ve LoRa demosu için `.env` (açıklamalar `.env.example`'da): `OFFLINE=1` (kayıtta CAPTCHA ve e-posta
-  doğrulaması yok, hesap hemen açılır), `FORUM_OVERRIDES` (tek satır JSON, `FORUM`'un üzerine yazılır; demoda kısa süreler,
-  `0.003` gün ≈ 4 dk), `SQLITE_NAME` (SQLite dosyası, boşsa `db.sqlite3`; aynı bilgisayarda iki düğüm için).
+  doğrulaması yok, hesap hemen açılır), `FORUM_OVERRIDES` (tek satır JSON, `FORUM`'un üzerine yazılır, `FORUM`'da olmayan
+  ad site açılırken hata verir; demoda kısa süreler, `0.003` gün ≈ 4 dk), `SQLITE_NAME` (SQLite dosyası, boşsa `db.sqlite3`; aynı bilgisayarda iki düğüm için).
   Eşitleme: `SYNC_NODE` (boş/0 kapalı, 1 hakem, 2), `SYNC_PORT`, `SYNC_KEY` (`SYNC_NODE` doluyken zorunlu).
 - Git: GitHub'da private `forum` deposu, dal `main`.
   `.gitignore`: `.venv/`, `__pycache__/`, `db.sqlite3`, `.env`, `.vscode/`, `staticfiles/`. `.gitattributes`: `deploy/` LF.
