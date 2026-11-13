@@ -20,30 +20,31 @@ LOCAL = {
 
 
 @cache
-def models():
+def table_models():
     """db_table -> model; somut modeller (otomatik çoktan-çoğa tablolar get_models()'ta yok)."""
     return {m._meta.db_table: m for app in APPS for m in apps.get_app_config(app).get_models()}
 
 
 def tables():
     """Eşitlenen tablolar, ada göre sıralı; mesajdaki tablo numarası bu listedeki yer."""
-    return sorted(models())
+    return sorted(table_models())
 
 
 def columns(table):
     """Telsizden giden sütunlar: pk ve LOCAL dışındakiler, modelin alan sırasıyla."""
     local = LOCAL.get(table, {})
-    return [f.column for f in models()[table]._meta.concrete_fields if not f.primary_key and f.column not in local]
+    return [f.column for f in table_models()[table]._meta.concrete_fields
+            if not f.primary_key and f.column not in local]
 
 
 def label(table):
-    return str(models()[table]._meta.verbose_name)
+    return str(table_models()[table]._meta.verbose_name)
 
 
 def scored():
     """▲/▼ oy tablosu -> (hedef FK sütunu, hedef tablo)."""
     out = {}
-    for table, model in models().items():
+    for table, model in table_models().items():
         if issubclass(model, UpDownVote):
             target = model._meta.get_field(model.TARGET)
             out[table] = (target.column, target.related_model._meta.db_table)
@@ -56,7 +57,7 @@ def quoted(names):
 
 def fingerprint():
     """Şema özeti: tablolar, bütün sütunları ve ContentType kimlikleri iki tarafta aynı olmalı."""
-    schema = [[t, [f.column for f in models()[t]._meta.concrete_fields]] for t in tables()]
+    schema = [[t, [f.column for f in table_models()[t]._meta.concrete_fields]] for t in tables()]
     types = list(ContentType.objects.order_by('id').values_list('id', 'app_label', 'model'))
     return zlib.crc32(json.dumps([schema, types]).encode())
 

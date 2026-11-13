@@ -1,13 +1,16 @@
 """Değişikliği yakalama: SQLite tetikleyicileri eşitlenen her satır değişikliğinin o anki halini sync_change'e yazar.
 Satır hangi yoldan değişirse değişsin (save, .update(), ham SQL) yakalanır; mevcut uygulamalara dokunulmaz.
+Numara aralıkları da burada: aynı içerik iki tarafta aynı pk'ye sahip olsun.
 """
+from django.conf import settings
 from django.core import checks
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection, transaction
+from django.db.models import F, Max
 
 from .gate import enabled
 from .models import Change, Counter, Received, State
-from .tables import columns, tables
+from .tables import columns, table_models, tables
 
 # applying: eşitleyici karşıdan geleni uygularken tetikleyici susar (yankı olmasın).
 # seen: kayıt anında karşıdan uygulanmış son sıra no; strftime: UTC, milisaniyeli (Django'nun biçimi).
@@ -68,3 +71,24 @@ def check_triggers(**kwargs):
     if enabled() and 'sync_state' in connection.introspection.table_names() and not installed():
         return [checks.Warning('Eşitleme tetikleyicileri kurulu değil: python manage.py sync_init', id='sync.W001')]
     return []
+
+
+def next_pk(model):
+    """Bu düğümün aralığından sıradaki pk (1. düğüm 1'den, 2. düğüm PK_BASE'den). SQLite'ın kendi sayacı olmaz:
+    karşıdan gelen büyük numara onu yukarı çeker. Sayaç satırı yazma kilidi alır: Django pk'si verilmiş yeni nesnede
+    önce UPDATE dener, aynı numara iki kez verilseydi ikinci kayıt birincinin satırını sessizce ezerdi.
+    """
+    node, base = settings.SYNC['NODE'], settings.SYNC['PK_BASE']
+    low = base if node == 2 else 1
+    key = f'{node}:{model._meta.db_table}'
+    with transaction.atomic():
+        if not Counter.objects.filter(key=key).update(next=F('next') + 1):  # ilk kullanım
+            top = model._base_manager.filter(pk__gte=low, pk__lt=low + base).aggregate(m=Max('pk'))['m']
+            Counter.objects.create(key=key, next=(top or low - 1) + 1)
+        return Counter.objects.get(key=key).next
+
+
+def assign_pk(sender, instance, **kwargs):
+    """pre_save (bütün modeller): eşitlenen modelin pk'si boş yeni nesnesine numara. Kapalıyken sorgu yok."""
+    if enabled() and instance.pk is None and sender._meta.db_table in table_models():
+        instance.pk = next_pk(sender)

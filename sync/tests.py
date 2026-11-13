@@ -15,7 +15,7 @@ from topics.models import Topic, TopicVote
 from voting.tests import make_user
 
 from . import capture
-from .models import Change, State
+from .models import Change, Counter, State
 from .tables import columns, digest, fingerprint, label, scored, tables
 
 SQLITE = skipUnless(connection.vendor == 'sqlite', 'eşitleme yalnızca SQLite')
@@ -130,3 +130,36 @@ class CaptureTests(SyncTestCase):
             cursor.execute('DROP TRIGGER sync_topics_topic_u')
         call_command('migrate', verbosity=0)
         self.assertFalse(capture.installed())
+
+
+class PkTests(SyncTestCase):
+    def test_node1_counts_up_in_low_range(self):
+        ali, veli = make_user('ali'), make_user('veli')
+        self.assertEqual(veli.pk, ali.pk + 1)
+        self.assertLess(veli.pk, BASE)
+
+    @override_settings(SYNC=NODE2)
+    def test_node2_uses_high_range(self):
+        ali = make_user('ali')
+        topic = Topic.objects.create(title='Bir', author=ali)
+        self.assertEqual((ali.pk, topic.pk), (BASE, BASE))
+        self.assertEqual(make_user('veli').pk, BASE + 1)
+
+    def test_peer_rows_do_not_move_local_range(self):
+        ali = make_user('ali')
+        User.objects.create(pk=BASE + 5, username='uzak', email='u@x.invalid', first_name='', last_name='')
+        self.assertEqual(make_user('veli').pk, ali.pk + 1)
+
+    def test_counters_are_per_node(self):  # veritabanı 1. düğümden kopyalandıktan sonra 2. düğüm kendi aralığını kullanır
+        make_user('ali')
+        with self.settings(SYNC=NODE2):
+            self.assertEqual(make_user('veli').pk, BASE)
+
+    @override_settings(SYNC={**settings.SYNC, 'NODE': 0})
+    def test_disabled_leaves_pk_to_database(self):
+        make_user('ali')
+        self.assertFalse(Counter.objects.exists())
+
+    def test_unsynced_models_are_untouched(self):
+        ContentType.objects.create(app_label='x', model='y')
+        self.assertFalse(Counter.objects.filter(key__contains='content_type').exists())
