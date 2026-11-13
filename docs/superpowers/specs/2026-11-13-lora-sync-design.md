@@ -141,7 +141,7 @@ Her eşitlenen tabloya üç SQLite tetikleyicisi (ekleme, güncelleme, silme) ko
 bir satır yazar:
 
 - `id`: sıra numarası (otomatik artan). Düğümün giden akışı bu numarayla sıralıdır.
-- `tbl`, `row`: tablo adı ve satırın pk'si.
+- `tbl`, `rid`: tablo adı ve satırın pk'si.
 - `data`: satırın **o anki** hali, `json_array(NEW.sütun, ...)` ile (yerelde kalan sütunlar hariç); silmede boş.
   Anlık görüntü saklandığı için karşı taraf değişiklikleri tam oluş sırasıyla ve o anki haliyle uygular; yabancı
   anahtar sırası hiç bozulmaz.
@@ -169,13 +169,14 @@ boş yeni nesneye kendi aralığından sıradaki numarayı yazar.
 - Atama aynı düğümdeki eşzamanlı iki kayda aynı numarayı vermemelidir. Django, pk'si elle verilmiş yeni nesnede önce
   UPDATE dener: aynı numara iki kez verilirse ikinci kayıt birincinin satırını sessizce ezer. Bu yüzden numara,
   yazma kilidi alan bir sayaç satırından alınır ("en büyük + 1" sorgusu yetmez).
+- Sayaç düğüm başınadır: veritabanı 1. bilgisayardan kopyalandığında 2. düğüm onun sayacını devralmaz.
 
 ### Karşıdan geleni uygulama
 
 Her mesaj bir değişikliktir ve tek bir veritabanı işleminde uygulanır:
 
 1. İlk iş `applying = 1` yazılır (yazma kilidi de böyle alınır; bayrak aynı işlemde 0'a döner, başka bağlantı 1'i görmez).
-2. **Çakışma kuralı (yalnızca 1. düğümde):** aynı `(tbl, row)` için kendi günlüğünde `id > mesajın seen değeri` olan
+2. **Çakışma kuralı (yalnızca 1. düğümde):** aynı `(tbl, rid)` için kendi günlüğünde `id > mesajın seen değeri` olan
    bir kayıt varsa gelen değişiklik atlanır. Anlamı: iki taraf aynı satırı birbirini görmeden değiştirdi, hakemin
    sürümü geçerli. 2. düğüm gelen her değişikliği uygular; hakemin sürümü ona zaten ulaşır.
 3. Ham SQL ile yazılır: `INSERT ... ON CONFLICT(id) DO UPDATE` (yerelde kalan sütunlar yalnızca eklemede yazılır,
@@ -223,7 +224,7 @@ iki forum eşitlenince açıklanacak" yazar.
 Taşıma katmanı, `gönder(paket)` / `al()` sunan bir "hat" nesnesi üzerinde çalışır; gerçek seri port, sahte hat ve
 testteki bellek içi kayıplı hat aynı arayüzü sunar.
 
-**Mesaj:** bir `sync_change` satırı. Gövde: `[tablo sırası, row, seen, data]` JSON'u, zlib ile sıkıştırılmış.
+**Mesaj:** bir `sync_change` satırı. Gövde: `[tablo sırası, rid, seen, data]` JSON'u, zlib ile sıkıştırılmış.
 Tablo sırası, eşitlenen tabloların ada göre sıralı listesindeki yeridir.
 
 **Paketler** (her biri en fazla yaklaşık 240 bayt; hepsinin sonunda 4 baytlık HMAC-SHA256 etiketi, anahtar `SYNC_KEY`;
@@ -232,16 +233,16 @@ etiketi tutmayan paket atılır, böylece başka grupların ve yabancıların pa
 | Tür | İçerik | Amaç |
 |---|---|---|
 | Veri | sıra no, parça no, parça sayısı, parça | Mesajın bir parçası (parça en fazla `CHUNK` bayt). |
-| Onay | sıra no, parça no | O parça alındı. Son parçanın onayı, mesajın uygulandığı (ya da bilerek atlandığı) anlamına gelir. |
+| Onay | sıra no, beklenen parça | "Bu mesajda sıradaki beklediğim parça." Parça sayısına eşitse mesaj uygulanmıştır (ya da bilerek atlanmıştır). |
 | Durum | saat, son sıra no, karşıdan uygulanan son sıra no, şema özeti | Bağlantı canlılığı, toplu onay, hakem kuralı, uyumluluk. |
 
 **Gönderme:** dur ve bekle. Aynı anda tek mesaj, parça parça; her parçadan sonra onay beklenir, gelmezse rastgele
 gecikmeyle yeniden gönderilir. Art arda başarısızlıkta bağlantı "yok" sayılır, daha seyrek denenmeye devam edilir.
 Hiçbir mesaj atılmaz.
 
-**Alma:** beklenen parça gelirse saklanır ve onaylanır; daha önce alınmış parça ya da uygulanmış mesaj yeniden
-gelirse yalnızca onaylanır (kaybolan onay böyle telafi edilir). Mesajlar artan sıra numarasıyla gelir; numaralarda
-boşluk olabilir.
+**Alma:** beklenen parça gelirse saklanır; her veri paketine "sıradaki beklediğim parça" onayıyla yanıt verilir.
+Böylece kaybolan onay telafi edilir ve mesajın ortasında yeniden başlayan alıcı göndereni baştan başlatır.
+Uygulanmış mesaj yeniden gelirse yalnızca onaylanır. Mesajlar artan sıra numarasıyla gelir; numaralarda boşluk olabilir.
 
 **Yarı çift yönlülük:** onay hemen gönderilir; başka paket göndermeden önce son duyulan paketten sonra kısa bir süre
 beklenir. İki düğümün zaman aşımı farklıdır ki aynı anda konuşup sürekli çarpışmasınlar.
@@ -266,6 +267,7 @@ Firmware yalnızca köprüdür; bütün akıl bilgisayardadır.
 - USB: sanal seri port (CDC). Bilgisayar ile modem arası SLIP çerçeveleme.
   - Bilgisayar -> modem: bir çerçeve = havaya verilecek bir paket.
   - Modem -> bilgisayar: bir çerçeve = `[RSSI][SNR]` + alınan paket.
+  - 1 baytlık çerçeve yoklamadır: havaya verilmez, modem sürüm numarasıyla yanıtlar ("modem takılı mı" denetimi).
 - Telsiz ayarları derleme bayrağı olarak `platformio.ini`'de: frekans 434,5 MHz, SF7, 125 kHz, kodlama 4/5, CRC açık,
   güç 10 dBm, sync word. Grup başına frekans ve sync word değiştirilebilir.
 - Kart üstü LED (PC13) her gönderme/almada yanıp söner.
@@ -286,7 +288,8 @@ Donanım teslime yetişmezse aynı sistem iki bilgisayar arasında ağ üzerinde
   Rozet `/sync/` sayfasına gider.
 - `/sync/` durum sayfası: düğüm numarası ve hakem olup olmadığı, bağlantı, son duyulma, sinyal (RSSI/SNR), saat farkı
   uyarısı, son bir saatte kullanılan yayın süresi, bekleyen mesaj sayısı, sonuç bekleyen öneriler, son giden ve
-  gelen kayıtlar (tür, satır no, zaman, yön, atlandıysa nedeni). İçerik metni ve kimin ne oy verdiği görünmez (kural 6).
+  gelen kayıtlar (tür, satır no, zaman, yön, atlandıysa nedeni), içerik özeti (iki tarafta aynıysa forumlar eşit).
+  İçerik metni ve kimin ne oy verdiği görünmez (kural 6).
 - `/sync/status.json`: `site.js` rozet varken belirli aralıkla sorar, rozeti günceller; sayfa açıldıktan sonra karşıdan
   yeni kayıt geldiyse "Karşı taraftan yeni içerik geldi · Yenile" şeridi çıkar.
 - Görünüm `site.css`'teki mevcut sınıflarla; satır içi stil/script yok.
@@ -303,14 +306,16 @@ durumundan, aynı ContentType kimlikleriyle başlar. Sonra yalnızca `.env`'deki
 
 ## Test
 
-- Mevcut testler `SYNC_NODE` boşken değişmeden geçer (SQLite ve PostgreSQL).
+- Mevcut testler `SYNC_NODE` boşken değişmeden geçer (SQLite ve PostgreSQL). Testler `.env`'i yok sayar: test
+  çalışırken `OFFLINE` kapalı, eşitleme kapalı, `FORUM_OVERRIDES` etkisizdir.
 - `sync/tests.py` (yalnızca SQLite): tetikleyici anlık görüntüyü yazar; yerel sütun değişikliği kayıt üretmez;
   ekleme/güncelleme/silme karşıda aynen oluşur; puan yeniden hesaplanır; çakışma kuralı; takma ad çakışması;
   uygulanamayan mesajda akışın sürmesi; numara ataması; hakem kapısı (süresi dolmuş öneriyi gizleme dahil);
   migration'dan sonra tetikleyicilerin geri gelmesi; kayıplı bellek içi hatta taşıma (kayıp, yineleme, çarpışma);
   yayın süresi bütçesi; internetsiz kayıt.
-- İki düğümü tek süreçte sınayan en az bir uçtan uca test: iki ayrı SQLite veritabanı, yakala -> paketle -> uygula;
-  sonunda eşitlenen tablolar iki tarafta satır satır aynı (yerelde kalan sütunlar hariç).
+- Uçtan uca test: bir forum senaryosu kurulur, eşitlenen tablolar boşaltılır, günlük baştan oynatılır (yakala ->
+  paketle -> uygula); sonunda tablolar satır satır eskisiyle aynıdır (yerelde kalan sütunlar hariç). İki gerçek
+  düğüm, C aşamasında aynı bilgisayarda iki süreçle ve içerik özeti karşılaştırılarak elle doğrulanır.
 
 ## Aşamalar
 
