@@ -45,6 +45,11 @@ class SignupTests(TestCase):
         self.assertContains(self.signup(), 'Robot olmadığın')
         self.assertFalse(User.objects.exists())
 
+    def test_form_has_turnstile(self, _):  # internetsiz mod dışında kutu, uyarı ve script yerinde
+        response = self.client.get('/accounts/signup/')
+        for part in (f'data-sitekey="{settings.TURNSTILE_SITE_KEY}"', 'turnstile/v0/api.js', '<noscript>'):
+            self.assertContains(response, part)
+
     def test_duplicates_ignore_case(self, _):
         self.signup()
         self.signup(username='ALI', email='x@example.com')
