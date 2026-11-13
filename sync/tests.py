@@ -1,16 +1,21 @@
+import json
 from unittest import skipUnless
 
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
+from django.core import checks
 from django.core.cache import cache
+from django.core.management import call_command
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from accounts.models import User
+from topics.models import Topic, TopicVote
 from voting.tests import make_user
 
-from .models import State
+from . import capture
+from .models import Change, State
 from .tables import columns, digest, fingerprint, label, scored, tables
 
 SQLITE = skipUnless(connection.vendor == 'sqlite', 'eşitleme yalnızca SQLite')
@@ -24,6 +29,7 @@ NODE2 = {**settings.SYNC, 'NODE': 2, 'KEY': 'k'}
 class SyncTestCase(TestCase):
     def setUp(self):
         cache.clear()
+        capture.install()
 
 
 class TablesTests(TestCase):
@@ -65,3 +71,62 @@ class TablesTests(TestCase):
         self.assertEqual(State.load().pk, 1)
         self.assertEqual(State.load().applied, 0)
         self.assertEqual(State.objects.count(), 1)
+
+
+class CaptureTests(SyncTestCase):
+    def snap(self, change):
+        return dict(zip(columns(change.tbl), json.loads(change.data)))
+
+    def test_insert_update_delete_are_logged_with_snapshot(self):
+        user = make_user('ali')  # INSERT + date_joined UPDATE'i
+        rows = list(Change.objects.filter(tbl='accounts_user', rid=user.pk))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(self.snap(rows[-1])['username'], 'ali')
+        self.assertNotIn('password', self.snap(rows[-1]))
+        topic = Topic.objects.create(title='Bir', author=user)
+        Topic.objects.filter(pk=topic.pk).update(is_closed=True)  # .update() de yakalanır
+        self.assertEqual(self.snap(Change.objects.filter(tbl='topics_topic').last())['is_closed'], 1)
+        vote = TopicVote.objects.create(topic=topic, voter=make_user('veli'), value=1)
+        pk = vote.pk
+        vote.delete()
+        self.assertIsNone(Change.objects.filter(tbl='topics_topicvote', rid=pk).last().data)
+
+    def test_local_column_changes_are_not_logged(self):
+        user = make_user('ali')
+        topic = Topic.objects.create(title='Bir', author=user)
+        count = Change.objects.count()
+        User.objects.filter(pk=user.pk).update(last_login=timezone.now(), first_name='Yeni')
+        Topic.objects.filter(pk=topic.pk).update(score=5)
+        self.assertEqual(Change.objects.count(), count)
+
+    def test_applying_flag_silences_triggers_and_seen_is_recorded(self):
+        State.objects.filter(pk=1).update(applying=True)
+        make_user('ali')
+        self.assertFalse(Change.objects.exists())
+        State.objects.filter(pk=1).update(applying=False, applied=7)
+        make_user('veli')
+        self.assertEqual(Change.objects.first().seen, 7)
+
+    def test_install_keeps_log_and_reset_clears_it(self):
+        make_user('ali')
+        count = Change.objects.count()
+        capture.install()
+        self.assertEqual(Change.objects.count(), count)
+        capture.reset()
+        self.assertFalse(Change.objects.exists())
+        self.assertTrue(capture.installed())
+
+    def test_missing_trigger_is_reported_and_restored_by_migrate(self):
+        with connection.cursor() as cursor:
+            cursor.execute('DROP TRIGGER sync_topics_topic_u')
+        self.assertFalse(capture.installed())
+        self.assertIn('sync.W001', [m.id for m in checks.run_checks()])
+        call_command('migrate', verbosity=0)
+        self.assertTrue(capture.installed())
+
+    @override_settings(SYNC={**settings.SYNC, 'NODE': 0})
+    def test_migrate_does_not_install_when_disabled(self):
+        with connection.cursor() as cursor:
+            cursor.execute('DROP TRIGGER sync_topics_topic_u')
+        call_command('migrate', verbosity=0)
+        self.assertFalse(capture.installed())
