@@ -12,7 +12,9 @@ from .models import User
 
 
 def turnstile_ok(token):
-    """Cloudflare'e sorar: CAPTCHA çözüldü mü? Ağ/yanıt hatasında kayıt reddedilir."""
+    """Cloudflare'e sorar: CAPTCHA çözüldü mü? Ağ/yanıt hatasında kayıt reddedilir. İnternetsiz modda sorulmaz."""
+    if settings.OFFLINE:
+        return True
     data = urlencode({'secret': settings.TURNSTILE_SECRET_KEY, 'response': token}).encode()
     try:
         with urlopen('https://challenges.cloudflare.com/turnstile/v0/siteverify', data, timeout=10) as r:

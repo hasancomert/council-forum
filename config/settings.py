@@ -4,7 +4,9 @@ geliştirmede bunlar proje kökündeki .env dosyasından gelir. Gerçek değerle
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+import json
 import os
+import sys
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -36,12 +38,19 @@ def env_list(name):
     return [x.strip() for x in os.environ.get(name, '').split(',') if x.strip()]
 
 
-def database(url):
-    """DATABASE_URL -> DATABASES girdisi. Boşsa SQLite (geliştirme). Sunucuda 'postgres:///forum':
-    sunucu adı yok = Unix soketi, şifre yok = PostgreSQL işletim sistemi kullanıcısını tanır (peer).
+def database(url, name='db.sqlite3', shared=False):
+    """DATABASE_URL -> DATABASES girdisi. Boşsa SQLite: BASE_DIR/name (aynı bilgisayarda iki düğüm için ayrı dosya).
+    shared: dosyaya iki süreç yazar (forum + eşitleyici); "database is locked" çıkmasın diye kilit 20 sn beklenir,
+    işlem yazma kilidini baştan alır (IMMEDIATE), WAL günlüğünde okuyan yazanı beklemez.
+    Sunucuda 'postgres:///forum': sunucu adı yok = Unix soketi, şifre yok = PostgreSQL işletim sistemi kullanıcısını
+    tanır (peer).
     """
     if not url:
-        return {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}
+        db = {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / name}
+        if shared:
+            db['OPTIONS'] = {'timeout': 20, 'transaction_mode': 'IMMEDIATE',
+                             'init_command': 'PRAGMA journal_mode=WAL;'}
+        return db
     u = urlsplit(url)
     if u.scheme not in ('postgres', 'postgresql'):
         raise ImproperlyConfigured('DATABASE_URL yalnızca postgres:// olabilir.')
@@ -53,8 +62,22 @@ def database(url):
     }
 
 
+def forum_overrides(text):
+    """FORUM_OVERRIDES: FORUM'un üzerine yazılan JSON nesnesi (demoda kısa süreler; örnek .env.example'da)."""
+    try:
+        value = json.loads(text or '{}')
+    except ValueError:  # bozuk JSON (JSONDecodeError bir ValueError)
+        value = None
+    if not isinstance(value, dict):
+        raise ImproperlyConfigured('FORUM_OVERRIDES geçerli bir JSON nesnesi olmalı.')
+    return value
+
+
 load_env(BASE_DIR / '.env')
 DEBUG = env_bool('DEBUG')  # yoksa False: unutulan ayar yayında hata ayıklama sayfası açmasın
+# manage.py test: .env'deki internetsiz mod, eşitleme ve demo ayarları yok sayılır, testler her yerde aynı çalışır
+TESTING = sys.argv[1:2] == ['test']
+OFFLINE = env_bool('OFFLINE') and not TESTING  # internetsiz (LoRa demosu): kayıtta CAPTCHA ve e-posta doğrulaması yok
 
 
 def required(name, dev_default):
@@ -115,7 +138,35 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-DATABASES = {'default': database(os.environ.get('DATABASE_URL'))}
+# LoRa eşitleme (11. adım): iki bilgisayardaki iki forum. Süre ve boyut sayıları yalnızca burada.
+# DATABASES'ten önce: eşitleme açıkken SQLite dosyasını iki süreç paylaşır.
+SYNC = {
+    'NODE': 0 if TESTING else int(os.environ.get('SYNC_NODE') or 0),  # 0 = kapalı, 1 = hakem, 2
+    'PORT': os.environ.get('SYNC_PORT', ''),  # COM5 ya da socket://127.0.0.1:9100
+    'KEY': os.environ.get('SYNC_KEY', ''),  # iki düğümde aynı imza anahtarı
+    'PK_BASE': 1_000_000_000,  # 2. düğümün ilk pk'si
+    'CHUNK': 200,  # bir veri paketindeki parça (bayt)
+    'TAG': 4,  # HMAC etiketi (bayt)
+    'ACK_TIMEOUT': {1: 1.0, 2: 1.4},  # onay bekleme (sn); düğümler farklı ki çarpışma yinelenmesin
+    'JITTER': 0.5,  # yeniden göndermeye eklenen rastgele süre üst sınırı (sn)
+    'DOWN_AFTER': 5,  # art arda bu kadar onaysız denemeden sonra "bağlantı yok"
+    'DOWN_RETRY': 5,  # bağlantı yokken deneme aralığı (sn)
+    'GUARD': 0.1,  # son duyulan paketten sonra konuşmadan önce bekleme (sn)
+    'STATUS_SECONDS': 5,  # durum paketi aralığı
+    'ONLINE_SECONDS': 20,  # bu kadar süre paket duyulmazsa arayüzde "bağlantı yok"
+    'FINALIZE_SECONDS': 10,  # hakemin süresi dolan önerileri sonuçlandırma aralığı
+    'FINALIZE_MARGIN': 3,  # karşı saatin bitişi bu kadar saniye geçmiş olması beklenir
+    'CLOCK_WARN': 60,  # saat farkı uyarı eşiği (sn)
+    'AIRTIME_PERCENT': 10,  # saatlik yayın bütçesi
+    'RADIO': {'sf': 7, 'bw': 125000, 'cr': 5, 'preamble': 8},  # yayın süresi hesabı; firmware ile aynı olmalı
+    'POLL_SECONDS': 5,  # rozetin tarayıcıdan yenilenme aralığı
+    'LOG_ROWS': 30,  # durum sayfasında gösterilen kayıt sayısı
+}
+if SYNC['NODE'] not in (0, 1, 2) or (SYNC['NODE'] and not SYNC['KEY']):
+    raise ImproperlyConfigured('SYNC_NODE 0, 1 ya da 2 olmalı; doluyken SYNC_KEY de gerekli (.env.example).')
+
+DATABASES = {'default': database(os.environ.get('DATABASE_URL'), os.environ.get('SQLITE_NAME') or 'db.sqlite3',
+                                 bool(SYNC['NODE']))}
 
 # Veritabanı önbelleği: gunicorn'un bütün süreçleri aynı önbelleği görür (LocMemCache süreç başınaydı,
 # moderasyonun cache.delete()'i yalnızca kendi sürecini temizliyordu). Tablo: manage.py createcachetable
@@ -228,3 +279,5 @@ FORUM = {
     'REPORT_RATE': (10, 60),  # hız sınırı: 60 dakikada en fazla 10 şikayet
     'FOUNDING': True,  # kural 9: kuruluş sürüyor; False olunca admin'den konu eklenemez, rol ve yönetici salt okunur
 }
+if not TESTING:  # demo için kısa süreler (.env.example); testler kural sayılarının asıl değerleriyle çalışır
+    FORUM |= forum_overrides(os.environ.get('FORUM_OVERRIDES', ''))
