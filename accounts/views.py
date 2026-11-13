@@ -23,15 +23,20 @@ from .models import User
 @transaction.atomic  # e-posta gönderilemezse hesap da oluşmasın
 def signup(request):
     form = SignupForm(request.POST or None)
-    if form.is_bound:
-        # Doğrulama süresi dolan hesapları sil ki takma ad ve e-posta yeniden alınabilsin
+    if form.is_bound and not (settings.OFFLINE or settings.SYNC['NODE']):
+        # Doğrulama süresi dolan hesapları sil ki takma ad ve e-posta yeniden alınabilsin. İnternetsiz modda ve
+        # eşitlemede yok: karşıdan gelen üyenin last_login'i burada boş; moderasyonla kapatılmışsa silme
+        # ModAction'ın PROTECT'ine çarpar, kayıt sayfası 500 verir.
         expired = timezone.now() - timedelta(seconds=settings.PASSWORD_RESET_TIMEOUT)
         User.objects.filter(is_active=False, last_login=None, deleted_at=None, date_joined__lt=expired).delete()
     if form.is_valid():
         user = form.save(commit=False)
-        user.is_active = False  # e-posta doğrulanana kadar giriş yapamaz
+        user.is_active = settings.OFFLINE  # internetsiz modda hemen açık; yoksa e-posta doğrulanana kadar kapalı
         user.terms_accepted_at = timezone.now()  # zorunlu kutu: kabul anı saklanır
         user.save()
+        if settings.OFFLINE:  # doğrulama e-postası yok: doğrudan giriş
+            login(request, user)
+            return redirect('home')
         uid = urlsafe_base64_encode(str(user.pk).encode())
         token = default_token_generator.make_token(user)
         link = request.build_absolute_uri(reverse('activate', args=[uid, token]))
@@ -40,7 +45,9 @@ def signup(request):
             'title': 'E-postanı kontrol et',
             'message': f'{user.email} adresine bir doğrulama bağlantısı gönderdik.',
         })
-    return render(request, 'registration/signup.html', {'form': form, 'site_key': settings.TURNSTILE_SITE_KEY})
+    # internetsiz modda site_key boş: şablon CAPTCHA kutusunu ve Cloudflare script'ini koymaz
+    return render(request, 'registration/signup.html', {
+        'form': form, 'site_key': '' if settings.OFFLINE else settings.TURNSTILE_SITE_KEY})
 
 
 def activate(request, uidb64, token):

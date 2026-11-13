@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.core import mail
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from comments.models import Comment
@@ -70,6 +70,40 @@ class SignupTests(TestCase):
         self.signup()
         self.assertEqual(User.objects.count(), 1)
         self.assertEqual(len(mail.outbox), 2)
+
+
+@override_settings(OFFLINE=True)
+class OfflineSignupTests(TestCase):
+    def test_signup_is_active_and_logged_in_without_captcha_or_mail(self):
+        with patch('accounts.forms.urlopen') as net:
+            response = self.client.post('/accounts/signup/', FORM)
+        net.assert_not_called()
+        self.assertRedirects(response, '/')
+        user = User.objects.get()
+        self.assertTrue(user.is_active)
+        self.assertEqual(mail.outbox, [])
+        self.assertEqual(int(self.client.session['_auth_user_id']), user.pk)
+
+    def test_form_has_no_turnstile(self):
+        response = self.client.get('/accounts/signup/')
+        self.assertNotContains(response, 'turnstile')
+        self.assertNotContains(response, 'CAPTCHA')
+
+    def test_expired_cleanup_skipped(self):
+        old = make_user('eski')
+        User.objects.filter(pk=old.pk).update(is_active=False)
+        self.client.post('/accounts/signup/', FORM)
+        self.assertTrue(User.objects.filter(pk=old.pk).exists())
+
+
+class SyncSignupTests(TestCase):
+    @override_settings(SYNC={**settings.SYNC, 'NODE': 1, 'KEY': 'k'})
+    @patch('accounts.forms.turnstile_ok', return_value=True)
+    def test_expired_cleanup_skipped_while_syncing(self, _):
+        old = make_user('eski')
+        User.objects.filter(pk=old.pk).update(is_active=False)
+        self.client.post('/accounts/signup/', FORM)
+        self.assertTrue(User.objects.filter(pk=old.pk).exists())
 
 
 class VoteTests(TestCase):
