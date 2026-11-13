@@ -121,6 +121,7 @@ Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), ileride PW
 8. Moderasyon: gizleme, engelleme, herkese açık moderasyon kaydı ✓
 9. Yayın hazırlığı: tasarım, mobil uyum, PWA, yayın ayarları, hukuki metinler, `DEPLOY.md` ✓ (sunucuya kurulum ve hukuki kontrol kullanıcıda)
 10. Kurucu yetkisinin sınırı (admin salt okunur, oylar admin'de yok), alt konuda üst konu rozeti, "Uygulanamadı" durumu ✓
+11. LoRa eşitleme (ders projesi): internetsiz yerde iki bilgisayardaki forum, STM32 Black Pill + Ra-02 LoRa modemle eşitlenir. Tasarım `docs/superpowers/specs/2026-11-13-lora-sync-design.md`, plan `docs/superpowers/plans/2026-11-13-lora-sync.md` (A–F aşamaları, her aşama ayrı sohbet; A–D donanımsız, E–F bilgisayarda). Plan hazır, kod başlamadı.
 
 ## Çalışma
 - Adım adım, Türkçe, kısa açıklamalı (kullanıcı uzun anlatım istemiyor). Her adım yeni sohbette; adım bitince bu dosya güncellenir.
@@ -138,3 +139,5 @@ Python 3.14 + Django 6.1, SQLite (geliştirme) / PostgreSQL (yayın), ileride PW
 
 ## Durum
 1.–10. adım tamamlandı (10. adım `adim-10` dalında). Sıradaki: `DEPLOY.md`'ye göre sunucuya kurulum, hukuki metinlerin uzman kontrolü, kuruluş (ilk konular, yöneticiler ve kurucunun kendi yönetici işareti, `FOUNDING=False`).
+
+Öncelik 11. adımda (teslim yaklaşık 2026-11-27): sıradaki A aşaması. Aşama biten her sohbetin sonunda bu satır ve yol haritasındaki 11. madde güncellenir.
