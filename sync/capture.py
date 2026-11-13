@@ -79,11 +79,11 @@ def next_pk(model):
     önce UPDATE dener, aynı numara iki kez verilseydi ikinci kayıt birincinin satırını sessizce ezerdi.
     """
     node, base = settings.SYNC['NODE'], settings.SYNC['PK_BASE']
-    low = base if node == 2 else 1
+    low, high = (base, 2 * base) if node == 2 else (1, base)  # [low, high): 2. düğümün ilk numarası 1.'nin değil
     key = f'{node}:{model._meta.db_table}'
     with transaction.atomic():
         if not Counter.objects.filter(key=key).update(next=F('next') + 1):  # ilk kullanım
-            top = model._base_manager.filter(pk__gte=low, pk__lt=low + base).aggregate(m=Max('pk'))['m']
+            top = model._base_manager.filter(pk__gte=low, pk__lt=high).aggregate(m=Max('pk'))['m']
             Counter.objects.create(key=key, next=(top or low - 1) + 1)
         return Counter.objects.get(key=key).next
 

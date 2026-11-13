@@ -62,10 +62,11 @@ def write(table, rid, row):
         else:
             values = dict(zip(cols, row))
             if table == 'accounts_user':  # takma ad iki tarafta aynı anda alınmış: karşıdaki ekli adla yazılır
-                cursor.execute('SELECT 1 FROM accounts_user WHERE username = %s AND id != %s',
-                               [values['username'], rid])
+                # Ek önce çıkarılır: karşıda ekli adla saklanan üye orada değişince ad geri gelir; evinde asıl adı kalsın.
+                values['username'] = name = values['username'].removesuffix(f'-{rid}')
+                cursor.execute('SELECT 1 FROM accounts_user WHERE username = %s AND id != %s', [name, rid])
                 if cursor.fetchone():
-                    values['username'], note = f"{values['username']}-{rid}", RENAMED
+                    values['username'], note = f'{name}-{rid}', RENAMED
             local = {c: v(rid) if callable(v) else v for c, v in LOCAL.get(table, {}).items()}
             names = ['id', *cols, *local]
             update = ', '.join(f'"{c}" = excluded."{c}"' for c in cols)

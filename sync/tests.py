@@ -8,7 +8,7 @@ from django.core import checks
 from django.core.cache import cache
 from django.core.management import call_command
 from django.db import connection
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from accounts.models import User
@@ -175,6 +175,10 @@ class PkTests(SyncTestCase):
         User.objects.create(pk=BASE + 5, username='uzak', email='u@x.invalid', first_name='', last_name='')
         self.assertEqual(make_user('veli').pk, ali.pk + 1)
 
+    def test_peer_first_row_does_not_move_local_range(self):  # karşının ilk satırı (pk = PK_BASE) önce gelirse
+        User.objects.create(pk=BASE, username='uzak', email='u@x.invalid', first_name='', last_name='')
+        self.assertLess(make_user('ali').pk, BASE)
+
     def test_counters_are_per_node(self):  # veritabanı 1. düğümden kopyalanınca 2. düğüm kendi aralığını kullanır
         make_user('ali')
         with self.settings(SYNC=NODE2):
@@ -267,6 +271,13 @@ class ReplayTests(SyncTestCase):
         peer = User.objects.get(pk=BASE + 3)
         self.assertEqual((peer.username, peer.role), (f'ali-{BASE + 3}', 'B'))
 
+    def test_suffixed_name_coming_back_keeps_home_name(self):  # karşıda ekli adla saklanan üye orada değişince
+        ali = make_user('ali')
+        change = self.last('accounts_user')
+        apply(1, message(change, seen=change.id, username=f'ali-{ali.pk}', role='B'))
+        ali.refresh_from_db()
+        self.assertEqual((ali.username, ali.role), ('ali', 'B'))
+
     def test_votes_recompute_score(self):
         ali, veli, can = make_user('ali'), make_user('veli'), make_user('can')
         topic = Topic.objects.create(title='Bir', author=ali)
@@ -296,3 +307,23 @@ class ReplayTests(SyncTestCase):
         cache.set('x', 1)
         apply(1, message(self.last('accounts_user'), rid=BASE + 1, username='uzak'))
         self.assertIsNone(cache.get('x'))
+
+
+@SQLITE
+class ForeignKeyTests(TransactionTestCase):
+    """Yabancı anahtar hatası işlem kapanırken çıkar: TestCase'in sardığı işlemde görünmez, burada gerçek işlem var."""
+    def setUp(self):
+        capture.install()
+
+    def tearDown(self):  # tetikleyiciler kalsa veritabanını boşaltan flush da günlüğe yazardı
+        with connection.cursor() as cursor:
+            for name in capture.names():
+                cursor.execute(f'DROP TRIGGER "{name}"')
+
+    @override_settings(SYNC=NODE2)
+    def test_missing_reference_does_not_stop_stream(self):
+        ali = make_user('ali')
+        Comment.objects.create(target=Topic.objects.create(title='Bir', author=ali), author=ali, body='x')
+        orphan = message(Change.objects.filter(tbl='comments_comment').last(), rid=BASE + 5, author_id=BASE + 99)
+        self.assertEqual(apply(1, orphan), 'uygulanamadı')
+        self.assertEqual((Comment.objects.filter(pk=BASE + 5).exists(), State.load().applied), (False, 1))
