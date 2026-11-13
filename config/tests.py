@@ -17,7 +17,7 @@ from django.utils import timezone
 from accounts.models import User
 from topics.models import Topic
 
-from .settings import BASE_DIR, database, env_list, load_env
+from .settings import BASE_DIR, database, env_list, forum_overrides, load_env
 from .templatetags import ago, left, span
 
 # Yayın ortamı: .env'deki geliştirme değerleri (DEBUG=1) bunları ezemez, gerçek ortam değişkeni önceliklidir.
@@ -63,6 +63,38 @@ class EnvTests(SimpleTestCase):
         r = manage('check', SECRET_KEY='')
         self.assertNotEqual(r.returncode, 0)
         self.assertIn('SECRET_KEY ortam değişkeni gerekli', r.stderr)
+
+
+class SyncSettingsTests(SimpleTestCase):
+    def test_forum_overrides(self):
+        self.assertEqual(forum_overrides(''), {})
+        self.assertEqual(forum_overrides('{"QUORUM_MIN": 2, "PROPOSAL_VOTING_DAYS": 0.003}'),
+                         {'QUORUM_MIN': 2, 'PROPOSAL_VOTING_DAYS': 0.003})
+        for bad in ('{', '[1]', '"x"'):
+            with self.assertRaisesMessage(ImproperlyConfigured, 'FORUM_OVERRIDES'):
+                forum_overrides(bad)
+
+    def test_sqlite_name_and_shared_options(self):
+        self.assertEqual(database('')['NAME'], BASE_DIR / 'db.sqlite3')
+        self.assertNotIn('OPTIONS', database(''))
+        db = database('', name='node2.sqlite3', shared=True)
+        self.assertEqual(db['NAME'], BASE_DIR / 'node2.sqlite3')
+        self.assertEqual(db['OPTIONS'], {'timeout': 20, 'transaction_mode': 'IMMEDIATE',
+                                         'init_command': 'PRAGMA journal_mode=WAL;'})
+
+    def test_tests_ignore_env(self):
+        from django.conf import settings
+        self.assertTrue(settings.TESTING)
+        self.assertFalse(settings.OFFLINE)
+        self.assertEqual(settings.SYNC['NODE'], 0)
+        self.assertEqual(settings.SYNC['PK_BASE'], 1_000_000_000)
+        self.assertEqual(settings.FORUM['QUORUM_MIN'], 5)
+
+    def test_sync_node_checked(self):
+        for env in ({'SYNC_NODE': '3'}, {'SYNC_NODE': '1', 'SYNC_KEY': ''}):  # geçersiz düğüm; anahtarsız eşitleme
+            r = manage('check', **env)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn('SYNC_NODE', r.stderr)
 
 
 class PageTests(TestCase):
