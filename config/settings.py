@@ -108,6 +108,7 @@ INSTALLED_APPS = [
     'voting',
     'comments',
     'moderation',
+    'sync',  # her zaman kurulu, yalnızca SYNC['NODE'] doluyken etkin
 ]
 
 MIDDLEWARE = [
