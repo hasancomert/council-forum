@@ -1,4 +1,5 @@
 import json
+import random
 import zlib
 from unittest import skipUnless
 
@@ -19,6 +20,7 @@ from voting.models import TopicCloseProposal, Vote
 from voting.tests import make_user
 
 from . import capture
+from .link import Link
 from .models import Change, Counter, Received, State
 from .ports import MemoryPort, SerialPort, SlipDecoder, airtime, slip_encode
 from .replay import apply, pack
@@ -356,3 +358,129 @@ class PortTests(SimpleTestCase):
         port = SerialPort('COM_YOK_99')
         port.write(b'x')
         self.assertIsNone(port.read())
+
+
+class FakeHost:
+    def __init__(self, **messages):
+        self.out = {int(k[1:]): v for k, v in messages.items()}  # m1=b'..' -> {1: b'..'}
+        self.sent, self.got, self.calls, self.statuses, self.ok = 0, {}, 0, [], True
+
+    def applied(self):
+        return max(self.got, default=0)
+
+    def next_message(self):
+        pending = sorted(seq for seq in self.out if seq > self.sent)
+        return (pending[0], self.out[pending[0]]) if pending else None
+
+    def delivered(self, seq):
+        self.sent = seq
+
+    def deliver(self, seq, body):
+        self.calls += 1
+        if self.ok:
+            self.got[seq] = body
+        return self.ok
+
+    def status(self):
+        return 1000, max(self.out, default=0), 42
+
+    def on_status(self, *args):
+        self.statuses.append(args)
+
+
+class LinkTests(SimpleTestCase):
+    def setUp(self):
+        self.t = 0.0
+        self.rng = random.Random(1)
+
+    def pair(self, ha, hb, loss=0.0):
+        self.pa, self.pb = MemoryPort.pair(loss, self.rng.random)
+        make = lambda port, host, node: Link(port, host, node=node, key=b'k', now=lambda: self.t, rng=self.rng.random)
+        return make(self.pa, ha, 1), make(self.pb, hb, 2)
+
+    def run_for(self, links, seconds, dt=0.05):
+        for _ in range(int(seconds / dt)):
+            self.t += dt
+            for link in links:
+                link.step()
+
+    def test_messages_cross_a_lossy_link_in_order(self):
+        big = self.rng.randbytes(20000)
+        ha, hb = FakeHost(m1=b'bir', m2=big, m3=b''), FakeHost(m1=b'x', m2=b'y')
+        links = self.pair(ha, hb, loss=0.3)
+        self.run_for(links, 900)
+        self.assertEqual(hb.got, {1: b'bir', 2: big, 3: b''})
+        self.assertEqual(ha.got, {1: b'x', 2: b'y'})
+        self.assertEqual((ha.sent, hb.sent, hb.calls), (3, 2, 3))
+
+    def test_foreign_own_and_broken_packets_are_ignored(self):
+        ha, hb = FakeHost(), FakeHost()
+        la, lb = self.pair(ha, hb)
+        stranger = Link(self.pa, FakeHost(m1=b'x'), node=1, key=b'baska', now=lambda: self.t, rng=self.rng.random)
+        echo = Link(self.pa, FakeHost(m1=b'x'), node=2, key=b'k', now=lambda: self.t, rng=self.rng.random)
+        self.run_for([stranger, echo, lb], 3)
+        self.pa.write(b'D\x01')
+        self.pa.write(b'')
+        self.run_for([lb], 1)
+        self.assertEqual((hb.got, hb.statuses, lb.heard), ({}, [], None))
+
+    def test_duplicate_of_applied_message_is_acked_not_redelivered(self):
+        ha, hb = FakeHost(m1=b'bir'), FakeHost()
+        links = self.pair(ha, hb)
+        self.run_for(links, 3)
+        ha.sent = 0  # gönderen onayı kaçırmış gibi yeniden yollar
+        self.run_for(links, 3)
+        self.assertEqual((ha.sent, hb.calls), (1, 1))
+
+    def test_no_ack_when_host_refuses(self):
+        ha, hb = FakeHost(m1=b'bir'), FakeHost()
+        hb.ok = False
+        links = self.pair(ha, hb)
+        self.run_for(links, 10)
+        self.assertEqual((ha.sent, hb.got), (0, {}))
+        hb.ok = True
+        self.run_for(links, 30)
+        self.assertEqual((ha.sent, hb.got), (1, {1: b'bir'}))
+
+    def test_restarted_receiver_gets_message_from_first_part(self):
+        big = self.rng.randbytes(2000)
+        ha, hb = FakeHost(m1=big), FakeHost()
+        la, lb = self.pair(ha, hb)
+        self.run_for([la, lb], 1.5)  # birkaç parça gitti
+        self.assertEqual(hb.got, {})
+        fresh = Link(self.pb, hb, node=2, key=b'k', now=lambda: self.t, rng=self.rng.random)
+        self.run_for([la, fresh], 120)
+        self.assertEqual(hb.got, {1: big})
+
+    def test_status_is_exchanged_when_idle(self):
+        ha, hb = FakeHost(), FakeHost()
+        self.run_for(self.pair(ha, hb), 12)
+        self.assertGreaterEqual(len(hb.statuses), 2)
+        self.assertEqual(hb.statuses[0], (1000, 0, 0, 42))
+
+    def test_status_continues_during_a_message(self):  # alıcı şemayı mesajın ortasında da öğrenebilsin
+        ha, hb = FakeHost(m1=b'bir'), FakeHost()
+        hb.ok = False  # mesaj hiç bitmez
+        self.run_for(self.pair(ha, hb), 12)
+        self.assertGreaterEqual(len(hb.statuses), 2)
+
+    def test_link_goes_down_and_recovers(self):
+        ha, hb = FakeHost(m1=b'bir'), FakeHost()
+        la, lb = self.pair(ha, hb, loss=1.0)
+        self.run_for([la, lb], 30)
+        self.assertFalse(la.online)
+        self.pa.loss = self.pb.loss = 0.0
+        self.run_for([la, lb], 30)
+        self.assertTrue(la.online)
+        self.assertEqual(hb.got, {1: b'bir'})
+
+    def test_airtime_budget_holds_data(self):
+        budget = 3600 * 0.05 / 100  # 1,8 sn
+        with self.settings(SYNC={**settings.SYNC, 'AIRTIME_PERCENT': 0.05}):
+            ha, hb = FakeHost(m1=self.rng.randbytes(2000)), FakeHost()  # 10 parça, yaklaşık 3,3 sn yayın
+            la, lb = self.pair(ha, hb)
+            self.run_for([la, lb], 300)
+            self.assertEqual(hb.got, {})
+            self.assertLessEqual(la.airtime_used(), budget + airtime(255))
+            self.run_for([la, lb], 3600 * 4, dt=0.5)  # bütçe saat saat açılır
+            self.assertEqual(len(hb.got), 1)

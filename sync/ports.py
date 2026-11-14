@@ -1,4 +1,4 @@
-"""Hatlar: modemin seri portu (ya da sahte hat, socket://), testlerdeki bellek içi hat; SLIP çerçeveleme ve yayın süresi.
+"""Hatlar: modemin seri portu (ya da sahte hat, socket://), testlerdeki bellek içi hat; SLIP çerçeveleme, yayın süresi.
 Üç hat aynı arayüzü sunar: write(paket), read() -> (RSSI, SNR, paket) ya da None.
 """
 import math
