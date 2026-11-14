@@ -23,6 +23,7 @@ from voting.models import TopicCloseProposal, Vote
 from voting.tests import make_user
 
 from . import capture
+from .context import sync_status
 from .link import Link
 from .models import Change, Counter, Received, State
 from .ports import MemoryPort, SerialPort, SlipDecoder, airtime, slip_encode
@@ -739,3 +740,47 @@ class GateTests(SyncTestCase):
         self.assertEqual(proposal.status, 'applied')
         self.assertTrue(Change.objects.filter(tbl='voting_topiccloseproposal', rid=proposal.pk,
                                               data__contains='applied').exists())
+
+
+class UiTests(SyncTestCase):
+    @override_settings(SYNC={**settings.SYNC, 'NODE': 0})
+    def test_disabled_site_has_no_badge_and_no_pages(self):
+        self.assertNotContains(self.client.get('/'), 'LoRa')
+        self.assertEqual(self.client.get('/sync/').status_code, 404)
+        self.assertEqual(self.client.get('/sync/status.json').status_code, 404)
+        with self.assertNumQueries(0):
+            self.assertEqual(sync_status(None), {})
+
+    def test_badge_shows_link_state_and_pending(self):
+        make_user('ali')  # 2 bekleyen kayıt
+        response = self.client.get('/')
+        self.assertContains(response, 'LoRa: bağlantı yok')
+        self.assertContains(response, 'bekleyen 2')
+        State.objects.filter(pk=1).update(heard_at=timezone.now(), peer_applied=Change.objects.last().id)
+        response = self.client.get('/')
+        self.assertContains(response, 'LoRa: bağlı')
+        self.assertNotContains(response, 'bekleyen')
+
+    def test_status_json(self):
+        self.assertEqual(self.client.get('/sync/status.json').json(),
+                         {'node': 1, 'arbiter': True, 'online': False, 'pending': 0, 'applied': 0, 'schema_ok': True})
+
+    def test_status_page_warnings(self):
+        self.assertNotContains(self.client.get('/sync/'), 'Saat farkı')
+        State.objects.filter(pk=1).update(clock_offset=3600, schema_ok=False)
+        response = self.client.get('/sync/')
+        self.assertContains(response, 'Saat farkı')
+        self.assertContains(response, 'Veritabanları uyumsuz')
+
+    def test_status_page_lists_traffic_without_content(self):
+        ali = make_user('ali')
+        topic = Topic.objects.create(title='Bir', author=ali)
+        comment = Comment.objects.create(target=topic, author=ali, body='gizli-metin')
+        response = self.client.get('/sync/')
+        self.assertContains(response, 'Yorum')  # satır başında: Türkçe capfirst (CLAUDE.md, etiketler)
+        self.assertContains(response, f'#{comment.pk}')
+        self.assertContains(response, digest())
+        self.assertNotContains(response, 'gizli-metin')
+
+    def test_status_page_has_no_inline_style_or_script(self):
+        self.assertNotRegex(self.client.get('/sync/').content.decode(), r'style=|<style|<script>')

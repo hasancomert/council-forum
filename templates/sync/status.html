@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>LoRa eşitleme</h1>
+<p class="lead">Bu bilgisayardaki forum, öbür bilgisayardakiyle LoRa telsizi üzerinden eşitlenir.</p>
+{% if not sync.schema_ok %}
+  <p class="notice error">Veritabanları uyumsuz: iki bilgisayar aynı veritabanı kopyasından başlamamış. Karşıdan gelen
+    mesajlar uygulanmıyor; 1. bilgisayarın veritabanı 2.'ye kopyalanmalı.</p>
+{% endif %}
+{% if clock_warn %}
+  <p class="notice error">Saat farkı: karşı bilgisayarın saati {{ state.clock_offset }} sn farklı. Oylama sonucu iki
+    tarafta yine aynı çıkar, ama süreler farklı görünür; saatleri eşitleyin.</p>
+{% endif %}
+<ul class="list">
+  <li>Düğüm {{ sync.node }}{% if sync.arbiter %} · hakem: oylamaları bu forum sonuçlandırır{% endif %}</li>
+  <li>Bağlantı: <strong>{% if sync.online %}bağlı{% else %}yok{% endif %}</strong>{% if state.heard_at %} · son paket {{ state.heard_at|ago }}{% endif %}</li>
+  {% if state.rssi is not None %}<li>Sinyal: RSSI {{ state.rssi }} dBm, SNR {{ state.snr }} dB</li>{% endif %}
+  <li>Son bir saatte yayın süresi: %{{ airtime|floatformat:1 }} (sınır %{{ airtime_limit }})</li>
+  <li>Gönderilmeyi bekleyen: {{ sync.pending }}</li>
+  <li>İçerik özeti: <code>{{ digest }}</code> (iki bilgisayarda aynıysa forumlar eşit)</li>
+</ul>
+
+<h2>Sonuç bekleyen öneriler</h2>
+<ul class="list">
+  {% for p in waiting %}<li><a href="{{ p.get_absolute_url }}">{{ p.kind|capfirst }} #{{ p.pk }}</a> · oylama {{ p.voting_ends_at|ago }} bitti</li>
+  {% empty %}<li>Yok.</li>{% endfor %}
+</ul>
+
+{# kayıtlarda yalnızca tablo ve satır no: içerik metni, üye adı ve oy yönü gösterilmez (kural 6) #}
+<h2>Giden</h2>
+<ul class="list">
+  {% for c in sent %}<li>{{ c.label|capfirst }} #{{ c.rid }} · {{ c.at|ago }} · {% if c.id <= state.peer_applied %}iletildi{% else %}bekliyor{% endif %}</li>
+  {% empty %}<li>Kayıt yok.</li>{% endfor %}
+</ul>
+<h2>Gelen</h2>
+<ul class="list">
+  {% for r in received %}<li>{{ r.label|capfirst }} #{{ r.rid }} · {{ r.at|ago }}{% if r.note %} · <strong>{{ r.note }}</strong>{% endif %}</li>
+  {% empty %}<li>Kayıt yok.</li>{% endfor %}
+</ul>
+{% endblock %}
