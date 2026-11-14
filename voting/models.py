@@ -13,6 +13,7 @@ from django.utils import timezone
 from accounts.models import User
 from comments.models import Comment, Commentable
 from moderation.models import Hideable
+from sync.gate import may_finalize
 from topics.models import Topic
 
 
@@ -133,7 +134,8 @@ class BaseProposal(Commentable, Hideable):
         """Süren öneri gizlenince iptal olur; gizleme kaldırılınca iptal kalır (oylama süresi geri gelmez)."""
         if hidden:
             self.finalize()  # süresi dolmuşsa önce sonuçlansın: bitmiş oylama iptal edilmez
-            type(self).objects.filter(pk=self.pk, status=self.Status.VOTING).update(status=self.Status.CANCELLED)
+            type(self).objects.filter(pk=self.pk, status=self.Status.VOTING, voting_ends_at__gt=timezone.now()).update(
+                status=self.Status.CANCELLED)  # süresi dolup sonuçlanmamış (eşitlemede hakemi bekleyen) iptal olmaz
             self.refresh_from_db(fields=['status'])
         super().set_hidden(hidden)
 
@@ -162,6 +164,8 @@ class BaseProposal(Commentable, Hideable):
         """Kural 3 ve 4'ü uygular; lazy kontrol (sayfa ziyareti) ve finalize_proposals
         komutu tarafından çağrılır. Süresi gelmemiş öneriye dokunmaz.
         """
+        if not may_finalize(self):  # LoRa eşitlemesi: yalnızca hakem düğüm, karşının oyları gelince (sync/gate.py)
+            return
         now = timezone.now()
         if self.status == self.Status.VOTING:
             if now < self.voting_ends_at:

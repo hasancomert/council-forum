@@ -1,12 +1,15 @@
 """Eşitleyici: Link ile veritabanı arasındaki yapıştırıcı. Giden mesajlar sync_change'ten, gelenler apply() ile."""
+import io
 import logging
 import time
 from datetime import UTC, datetime, timedelta
 
 from django.conf import settings
+from django.core.management import call_command
 from django.db.models import Q
 from django.utils import timezone
 
+from .gate import is_arbiter
 from .link import Link
 from .models import Change, Received, State
 from .replay import apply, pack
@@ -18,6 +21,7 @@ log = logging.getLogger(__name__)
 class Runner:
     def __init__(self, port, now=time.monotonic):
         self.now, self.saved_at = now, None
+        self.finalize_at = now() + settings.SYNC['FINALIZE_SECONDS']
         self.link = Link(port, self, node=settings.SYNC['NODE'], key=settings.SYNC['KEY'].encode(), now=now)
         self.schema_known = None  # bu süreçte karşının şeması: None bilinmiyor, True tutuyor, False tutmuyor
         self.waiting = None  # (karşı saat, karşının son sıra no): hepsi uygulanınca synced_until olur
@@ -84,5 +88,8 @@ class Runner:
                     fields.update(heard_at=timezone.now() - timedelta(seconds=self.now() - link.heard),
                                   rssi=link.rssi, snr=link.snr)
                 State.objects.filter(pk=1).update(**fields)
+            if is_arbiter() and self.now() >= self.finalize_at:  # sonuç sayfa ziyaretini beklemez (sync/gate.py)
+                self.finalize_at = self.now() + settings.SYNC['FINALIZE_SECONDS']
+                call_command('finalize_proposals', stdout=io.StringIO())
         except Exception:
             log.exception('Eşitleme adımı başarısız')

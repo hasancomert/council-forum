@@ -3,7 +3,7 @@ import random
 import time
 import zlib
 from collections import deque
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest import skipUnless
 
 from django.conf import settings
@@ -655,3 +655,87 @@ class RunnerTests(SyncTestCase):
             self.runner.on_status(1, 0, 0, fingerprint() + 1)
         self.assertEqual(len(logs.records), 1)
         self.assertIn('uyumsuz', logs.records[0].getMessage())
+
+
+QUORUM2 = {**settings.FORUM, 'QUORUM_MIN': 2}
+
+
+@override_settings(FORUM=QUORUM2)
+class GateTests(SyncTestCase):
+    def ended(self, **changes):
+        ali, veli = make_user('ali'), make_user('veli')
+        self.topic = Topic.objects.create(title='Konu', author=ali)
+        proposal = TopicCloseProposal.objects.create(proposer=ali, topic=self.topic)
+        for voter in (ali, veli):
+            Vote.cast(proposal=proposal, voter=voter, choice='yes')
+        changes = {'voting_ends_at': timezone.now() - timedelta(seconds=10)} | changes
+        TopicCloseProposal.objects.filter(pk=proposal.pk).update(**changes)
+        proposal.refresh_from_db()
+        return proposal
+
+    def synced(self, proposal, seconds):
+        State.objects.filter(pk=1).update(synced_until=proposal.voting_ends_at + timedelta(seconds=seconds))
+
+    @override_settings(SYNC={**settings.SYNC, 'NODE': 0})
+    def test_disabled_sync_finalizes_as_before(self):
+        proposal = self.ended()
+        proposal.finalize()
+        self.assertEqual(proposal.status, 'applied')
+
+    @override_settings(SYNC=NODE2)
+    def test_follower_never_finalizes_or_applies(self):
+        proposal = self.ended()
+        proposal.finalize()
+        self.assertEqual(proposal.status, 'voting')
+        TopicCloseProposal.objects.filter(pk=proposal.pk).update(status='accepted')  # hakemden ara durum gelmiş gibi
+        proposal.refresh_from_db()
+        proposal.finalize()
+        self.topic.refresh_from_db()
+        self.assertEqual((proposal.status, self.topic.is_closed), ('accepted', False))
+
+    def test_arbiter_waits_for_peer(self):
+        proposal = self.ended()
+        proposal.finalize()
+        self.assertEqual(proposal.status, 'voting')  # karşıdan hiç durum gelmedi
+        self.synced(proposal, -3600)  # karşının saati bir saat geride: bitişi henüz geçmedi
+        proposal.finalize()
+        self.assertEqual(proposal.status, 'voting')
+        self.synced(proposal, 2)  # pay (3 sn) dolmadı
+        proposal.finalize()
+        self.assertEqual(proposal.status, 'voting')
+        self.synced(proposal, 3)
+        proposal.finalize()
+        self.topic.refresh_from_db()
+        self.assertEqual((proposal.status, self.topic.is_closed), ('applied', True))
+
+    @override_settings(SYNC=NODE2)
+    def test_hiding_ended_unfinalized_proposal_does_not_cancel(self):
+        proposal = self.ended()
+        proposal.set_hidden(True)
+        self.assertEqual((proposal.status, proposal.is_hidden), ('voting', True))
+
+    @override_settings(SYNC=NODE2)
+    def test_hiding_running_proposal_still_cancels(self):
+        proposal = self.ended(voting_ends_at=timezone.now() + timedelta(hours=1))
+        proposal.set_hidden(True)
+        self.assertEqual(proposal.status, 'cancelled')
+
+    @override_settings(SYNC=NODE2)
+    def test_detail_page_says_waiting(self):
+        proposal = self.ended()
+        self.client.force_login(User.objects.get(username='veli'))
+        response = self.client.get(proposal.get_absolute_url())
+        self.assertContains(response, 'sonuç iki forum eşitlenince açıklanacak')
+        self.assertNotContains(response, 'name="choice"')
+
+    def test_arbiter_runner_finalizes_due_proposals(self):
+        proposal = self.ended()
+        self.synced(proposal, 60)
+        clock = [0.0]
+        runner = Runner(MemoryPort.pair()[0], now=lambda: clock[0])
+        clock[0] = settings.SYNC['FINALIZE_SECONDS'] + 1
+        runner.tick()
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, 'applied')
+        self.assertTrue(Change.objects.filter(tbl='voting_topiccloseproposal', rid=proposal.pk,
+                                              data__contains='applied').exists())
