@@ -24,7 +24,8 @@ from .templatetags import ago, left, span
 PROD = {'DEBUG': '0', 'SECRET_KEY': get_random_secret_key(), 'ALLOWED_HOSTS': 'forum.example',
         'EMAIL_HOST': 'smtp.example', 'TURNSTILE_SITE_KEY': 'site', 'TURNSTILE_SECRET_KEY': 'gizli',
         'DATABASE_URL': '', 'HSTS_SECONDS': '', 'SITE_OWNER': 'Ad Soyad', 'CONTACT_ADDRESS': 'Adres',
-        'CONTACT_EMAIL': 'iletisim@forum.example'}
+        'CONTACT_EMAIL': 'iletisim@forum.example',
+        'OFFLINE': '', 'FORUM_OVERRIDES': '', 'SQLITE_NAME': '', 'SYNC_NODE': ''}  # LoRa demosu ayarları yayında yok
 
 
 def manage(*args, **env):
