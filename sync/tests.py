@@ -8,7 +8,7 @@ from django.core import checks
 from django.core.cache import cache
 from django.core.management import call_command
 from django.db import connection
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from accounts.models import User
@@ -20,6 +20,7 @@ from voting.tests import make_user
 
 from . import capture
 from .models import Change, Counter, Received, State
+from .ports import MemoryPort, SerialPort, SlipDecoder, airtime, slip_encode
 from .replay import apply, pack
 from .tables import columns, digest, fingerprint, label, scored, tables
 
@@ -327,3 +328,31 @@ class ForeignKeyTests(TransactionTestCase):
         orphan = message(Change.objects.filter(tbl='comments_comment').last(), rid=BASE + 5, author_id=BASE + 99)
         self.assertEqual(apply(1, orphan), 'uygulanamadı')
         self.assertEqual((Comment.objects.filter(pk=BASE + 5).exists(), State.load().applied), (False, 1))
+
+
+class PortTests(SimpleTestCase):
+    def test_slip_round_trip(self):
+        data = bytes([0xC0, 0xDB, 1, 0xDC, 0xDD, 0xC0])
+        wire = slip_encode(data) + slip_encode(b'ikinci')
+        decoder = SlipDecoder()
+        self.assertEqual(decoder.feed(wire[:3]) + decoder.feed(wire[3:]), [data, b'ikinci'])
+        self.assertNotIn(0xC0, slip_encode(data)[1:-1])
+
+    def test_airtime_sf7(self):
+        self.assertAlmostEqual(airtime(210), 0.3331, places=3)
+        self.assertAlmostEqual(airtime(11), 0.0412, places=3)
+
+    def test_memory_pair(self):
+        a, b = MemoryPort.pair()
+        a.write(b'x')
+        self.assertEqual(b.read(), (-50, 10, b'x'))
+        self.assertIsNone(b.read())
+        self.assertIsNone(a.read())
+        a.loss = 1.0
+        a.write(b'y')
+        self.assertIsNone(b.read())
+
+    def test_serial_port_survives_missing_device(self):
+        port = SerialPort('COM_YOK_99')
+        port.write(b'x')
+        self.assertIsNone(port.read())
