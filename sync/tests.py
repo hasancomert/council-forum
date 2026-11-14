@@ -1,5 +1,9 @@
 import json
+import random
+import time
 import zlib
+from collections import deque
+from datetime import UTC, datetime
 from unittest import skipUnless
 
 from django.conf import settings
@@ -8,7 +12,7 @@ from django.core import checks
 from django.core.cache import cache
 from django.core.management import call_command
 from django.db import connection
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from accounts.models import User
@@ -19,8 +23,11 @@ from voting.models import TopicCloseProposal, Vote
 from voting.tests import make_user
 
 from . import capture
+from .link import Link
 from .models import Change, Counter, Received, State
+from .ports import MemoryPort, SerialPort, SlipDecoder, airtime, slip_encode
 from .replay import apply, pack
+from .runner import Runner
 from .tables import columns, digest, fingerprint, label, scored, tables
 
 SQLITE = skipUnless(connection.vendor == 'sqlite', 'eşitleme yalnızca SQLite')
@@ -78,6 +85,9 @@ class TablesTests(TestCase):
         self.assertEqual(scored(), {'comments_commentvote': ('comment_id', 'comments_comment'),
                                     'topics_topicvote': ('topic_id', 'topics_topic')})
         self.assertEqual(label('comments_comment'), 'yorum')
+
+    def test_vote_labels_are_turkish(self):  # modelinde Türkçe ad yok: hedefinden türetilir
+        self.assertEqual((label('comments_commentvote'), label('topics_topicvote')), ('yorum oyu', 'konu oyu'))
 
     def test_fingerprint_follows_content_types(self):
         before = fingerprint()
@@ -327,3 +337,321 @@ class ForeignKeyTests(TransactionTestCase):
         orphan = message(Change.objects.filter(tbl='comments_comment').last(), rid=BASE + 5, author_id=BASE + 99)
         self.assertEqual(apply(1, orphan), 'uygulanamadı')
         self.assertEqual((Comment.objects.filter(pk=BASE + 5).exists(), State.load().applied), (False, 1))
+
+
+class PortTests(SimpleTestCase):
+    def test_slip_round_trip(self):
+        data = bytes([0xC0, 0xDB, 1, 0xDC, 0xDD, 0xC0])
+        wire = slip_encode(data) + slip_encode(b'ikinci')
+        decoder = SlipDecoder()
+        self.assertEqual(decoder.feed(wire[:3]) + decoder.feed(wire[3:]), [data, b'ikinci'])
+        self.assertNotIn(0xC0, slip_encode(data)[1:-1])
+
+    def test_airtime_sf7(self):
+        self.assertAlmostEqual(airtime(210), 0.3331, places=3)
+        self.assertAlmostEqual(airtime(11), 0.0412, places=3)
+
+    def test_memory_pair(self):
+        a, b = MemoryPort.pair()
+        a.write(b'x')
+        self.assertEqual(b.read(), (-50, 10, b'x'))
+        self.assertIsNone(b.read())
+        self.assertIsNone(a.read())
+        a.loss = 1.0
+        a.write(b'y')
+        self.assertIsNone(b.read())
+
+    def test_serial_port_survives_missing_device(self):
+        with self.assertLogs('sync', level='WARNING'):  # "Hat açılamadı"
+            port = SerialPort('COM_YOK_99')
+            port.write(b'x')
+            self.assertIsNone(port.read())
+
+    def test_serial_port_reports_open_failure_once(self):  # yanlış port "karşı kapalı"dan ayırt edilsin
+        with self.assertLogs('sync', level='WARNING') as logs:
+            port = SerialPort('COM_YOK_99')
+            port.read()
+            port.retry_at = 0  # yeniden deneme zamanı geldi
+            port.read()
+        self.assertEqual(len(logs.records), 1)
+        self.assertIn('COM_YOK_99', logs.records[0].getMessage())
+
+
+class FakeHost:
+    def __init__(self, **messages):
+        self.out = {int(k[1:]): v for k, v in messages.items()}  # m1=b'..' -> {1: b'..'}
+        self.sent, self.got, self.calls, self.statuses, self.ok = 0, {}, 0, [], True
+
+    def applied(self):
+        return max(self.got, default=0)
+
+    def next_message(self):
+        pending = sorted(seq for seq in self.out if seq > self.sent)
+        return (pending[0], self.out[pending[0]]) if pending else None
+
+    def delivered(self, seq):
+        self.sent = seq
+
+    def deliver(self, seq, body):
+        self.calls += 1
+        if self.ok:
+            self.got[seq] = body
+        return self.ok
+
+    def status(self):
+        return 1000, max(self.out, default=0), 42
+
+    def on_status(self, *args):
+        self.statuses.append(args)
+
+
+class RadioPort:
+    """Yarı çift yönlü telsiz: paket airtime() boyunca havada, üst üste binen paketlerin ikisi de kaybolur."""
+    def __init__(self, sky, now):
+        self.sky, self.now, self.inbox, self.peer = sky, now, deque(), None
+
+    @classmethod
+    def pair(cls, now):
+        sky = []  # havadakiler: [başlangıç, bitiş, alıcı, paket, bozuldu]
+        a, b = cls(sky, now), cls(sky, now)
+        a.peer, b.peer = b, a
+        return a, b
+
+    def write(self, packet):
+        start = self.now()
+        item = [start, start + airtime(len(packet)), self.peer, packet, False]
+        for other in self.sky:
+            if other[0] < item[1] and start < other[1]:
+                other[4] = item[4] = True
+        self.sky.append(item)
+
+    def read(self):
+        for item in [i for i in self.sky if i[1] <= self.now()]:
+            self.sky.remove(item)
+            if not item[4]:
+                item[2].inbox.append((-50, 10, item[3]))
+        return self.inbox.popleft() if self.inbox else None
+
+
+class LinkTests(SimpleTestCase):
+    def setUp(self):
+        self.t = 0.0
+        self.rng = random.Random(1)
+
+    def pair(self, ha, hb, loss=0.0):
+        self.pa, self.pb = MemoryPort.pair(loss, self.rng.random)
+        make = lambda port, host, node: Link(port, host, node=node, key=b'k', now=lambda: self.t, rng=self.rng.random)
+        return make(self.pa, ha, 1), make(self.pb, hb, 2)
+
+    def run_for(self, links, seconds, dt=0.05):
+        for _ in range(int(seconds / dt)):
+            self.t += dt
+            for link in links:
+                link.step()
+
+    def test_messages_cross_a_lossy_link_in_order(self):
+        big = self.rng.randbytes(20000)
+        ha, hb = FakeHost(m1=b'bir', m2=big, m3=b''), FakeHost(m1=b'x', m2=b'y')
+        links = self.pair(ha, hb, loss=0.3)
+        self.run_for(links, 900)
+        self.assertEqual(hb.got, {1: b'bir', 2: big, 3: b''})
+        self.assertEqual(ha.got, {1: b'x', 2: b'y'})
+        self.assertEqual((ha.sent, hb.sent, hb.calls), (3, 2, 3))
+
+    def test_foreign_own_and_broken_packets_are_ignored(self):
+        ha, hb = FakeHost(), FakeHost()
+        la, lb = self.pair(ha, hb)
+        stranger = Link(self.pa, FakeHost(m1=b'x'), node=1, key=b'baska', now=lambda: self.t, rng=self.rng.random)
+        echo = Link(self.pa, FakeHost(m1=b'x'), node=2, key=b'k', now=lambda: self.t, rng=self.rng.random)
+        with self.assertLogs('sync', level='WARNING') as logs:  # iki bilgisayarda aynı SYNC_NODE
+            self.run_for([stranger, echo, lb], 3)
+        self.assertEqual(len(logs.records), 1)
+        self.assertIn('SYNC_NODE', logs.records[0].getMessage())
+        self.pa.write(b'D\x01')
+        self.pa.write(b'')
+        self.run_for([lb], 1)
+        self.assertEqual((hb.got, hb.statuses, lb.heard), ({}, [], None))
+
+    def test_duplicate_of_applied_message_is_acked_not_redelivered(self):
+        ha, hb = FakeHost(m1=b'bir'), FakeHost()
+        links = self.pair(ha, hb)
+        self.run_for(links, 3)
+        ha.sent = 0  # gönderen onayı kaçırmış gibi yeniden yollar
+        self.run_for(links, 3)
+        self.assertEqual((ha.sent, hb.calls), (1, 1))
+
+    def test_no_ack_when_host_refuses(self):
+        ha, hb = FakeHost(m1=b'bir'), FakeHost()
+        hb.ok = False
+        links = self.pair(ha, hb)
+        self.run_for(links, 10)
+        self.assertEqual((ha.sent, hb.got), (0, {}))
+        hb.ok = True
+        self.run_for(links, 30)
+        self.assertEqual((ha.sent, hb.got), (1, {1: b'bir'}))
+
+    def test_restarted_receiver_gets_message_from_first_part(self):
+        big = self.rng.randbytes(2000)
+        ha, hb = FakeHost(m1=big), FakeHost()
+        la, lb = self.pair(ha, hb)
+        self.run_for([la, lb], 1.5)  # birkaç parça gitti
+        self.assertEqual(hb.got, {})
+        fresh = Link(self.pb, hb, node=2, key=b'k', now=lambda: self.t, rng=self.rng.random)
+        self.run_for([la, fresh], 120)
+        self.assertEqual(hb.got, {1: big})
+
+    def test_status_is_exchanged_when_idle(self):
+        ha, hb = FakeHost(), FakeHost()
+        self.run_for(self.pair(ha, hb), 12)
+        self.assertGreaterEqual(len(hb.statuses), 2)
+        self.assertEqual(hb.statuses[0], (1000, 0, 0, 42))
+
+    def test_status_continues_during_a_message(self):  # alıcı şemayı mesajın ortasında da öğrenebilsin
+        ha, hb = FakeHost(m1=b'bir'), FakeHost()
+        hb.ok = False  # mesaj hiç bitmez
+        self.run_for(self.pair(ha, hb), 12)
+        self.assertGreaterEqual(len(hb.statuses), 2)
+
+    def test_link_goes_down_and_recovers(self):
+        ha, hb = FakeHost(m1=b'bir'), FakeHost()
+        la, lb = self.pair(ha, hb, loss=1.0)
+        self.run_for([la, lb], 30)
+        self.assertFalse(la.online)
+        self.pa.loss = self.pb.loss = 0.0
+        self.run_for([la, lb], 30)
+        self.assertTrue(la.online)
+        self.assertEqual(hb.got, {1: b'bir'})
+
+    def test_airtime_budget_holds_data(self):
+        budget = 3600 * 0.05 / 100  # 1,8 sn
+        with self.settings(SYNC={**settings.SYNC, 'AIRTIME_PERCENT': 0.05}):
+            ha, hb = FakeHost(m1=self.rng.randbytes(2000)), FakeHost()  # 10 parça, yaklaşık 3,3 sn yayın
+            la, lb = self.pair(ha, hb)
+            self.run_for([la, lb], 300)
+            self.assertEqual(hb.got, {})
+            self.assertLessEqual(la.airtime_used(), budget + airtime(255))
+            self.run_for([la, lb], 3600 * 4, dt=0.5)  # bütçe saat saat açılır
+            self.assertEqual(len(hb.got), 1)
+
+    def radio(self, ha, hb):
+        pa, pb = RadioPort.pair(lambda: self.t)
+        make = lambda port, host, node: Link(port, host, node=node, key=b'k', now=lambda: self.t, rng=self.rng.random)
+        return make(pa, ha, 1), make(pb, hb, 2)
+
+    def test_idle_nodes_started_together_hear_each_other(self):  # durum aralığı rastgele: telsizde kilitlenmesinler
+        ha, hb = FakeHost(), FakeHost()
+        self.run_for(self.radio(ha, hb), 60)
+        self.assertTrue(ha.statuses and hb.statuses)
+
+    def test_two_down_nodes_do_not_retry_in_lockstep(self):  # "bağlantı yok" denemeleri de rastgele aralıklı
+        ha, hb = FakeHost(m1=b'bir'), FakeHost(m1=b'iki')
+        la, lb = self.radio(ha, hb)
+        la.misses = lb.misses = settings.SYNC['DOWN_AFTER']  # ikisi de "bağlantı yok" kipinde başlar
+        self.run_for([la, lb], 120)
+        self.assertEqual((ha.got, hb.got), ({1: b'iki'}, {1: b'bir'}))
+
+    def test_two_way_transfer_survives_collisions(self):
+        ha, hb = FakeHost(m1=self.rng.randbytes(4000)), FakeHost(m1=self.rng.randbytes(4000))
+        self.run_for(self.radio(ha, hb), 600)
+        self.assertEqual((len(ha.got), len(hb.got)), (1, 1))
+
+    def test_failed_delivered_does_not_wedge_sender(self):  # ör. veritabanı kilitli: onay yeniden gelince yeniden dener
+        class Flaky(FakeHost):
+            def delivered(self, seq):
+                if not getattr(self, 'failed', False):
+                    self.failed = True
+                    raise OSError('veritabanı kilitli')
+                super().delivered(seq)
+
+        ha, hb = Flaky(m1=b'bir', m2=b'iki'), FakeHost()
+        links = self.pair(ha, hb)
+        for _ in range(400):  # Runner.tick gibi: istisna günlüğe yazılır, döngü sürer
+            self.t += 0.05
+            for link in links:
+                try:
+                    link.step()
+                except Exception:
+                    pass
+        self.assertEqual((ha.sent, hb.got), (2, {1: b'bir', 2: b'iki'}))
+
+
+class RunnerTests(SyncTestCase):
+    def setUp(self):
+        super().setUp()
+        self.runner = Runner(MemoryPort.pair()[0])
+
+    def peer_user(self, rid):
+        make_user(f'u{rid}')
+        return message(Change.objects.filter(tbl='accounts_user').last(), rid=rid, username=f'uzak{rid}')
+
+    def test_outbox_follows_peer_applied(self):
+        self.assertIsNone(self.runner.next_message())
+        make_user('ali')
+        first = Change.objects.first()
+        self.assertEqual(self.runner.next_message(), (first.id, pack(first)))
+        self.runner.delivered(first.id)
+        self.assertEqual(self.runner.next_message()[0], first.id + 1)
+        self.assertEqual(State.load().peer_applied, first.id)
+
+    def test_status_sets_synced_until_only_after_everything_applied(self):
+        when = datetime.fromtimestamp(2_000_000_000, UTC)
+        self.runner.on_status(2_000_000_000, 2, 0, fingerprint())
+        self.assertIsNone(State.load().synced_until)
+        self.assertTrue(self.runner.deliver(1, self.peer_user(BASE + 1)))
+        self.assertIsNone(State.load().synced_until)
+        self.assertTrue(self.runner.deliver(2, self.peer_user(BASE + 2)))
+        self.assertEqual(State.load().synced_until, when)
+        self.runner.on_status(1_900_000_000, 2, 0, fingerprint())
+        self.assertEqual(State.load().synced_until, when)  # geri gitmez
+
+    def test_schema_mismatch_blocks_apply(self):
+        incoming = self.peer_user(BASE + 1)  # bir kez: her çağrı aynı yerel üyeyi yeniden oluşturmaya çalışır
+        with self.assertLogs('sync', level='WARNING'):  # "Veritabanları uyumsuz"
+            self.runner.on_status(1, 0, 0, fingerprint() + 1)
+        self.assertFalse(State.load().schema_ok)
+        self.assertFalse(self.runner.deliver(1, incoming))
+        self.assertEqual(State.load().applied, 0)
+        self.runner.on_status(1, 0, 0, fingerprint())
+        self.assertTrue(State.load().schema_ok)
+        self.assertTrue(self.runner.deliver(1, incoming))
+
+    def test_nothing_applied_before_peer_schema_is_known(self):  # ilk durum paketi kaybolsa da
+        self.assertFalse(self.runner.deliver(1, self.peer_user(BASE + 1)))
+        self.assertEqual(State.load().applied, 0)
+
+    def test_terminal_line_for_incoming_message(self):
+        incoming = self.peer_user(BASE + 1)
+        self.runner.on_status(1, 0, 0, fingerprint())
+        with self.assertLogs('sync', level='INFO') as logs:
+            self.runner.deliver(1, incoming)
+        self.assertEqual(logs.records[-1].getMessage(), f'gelen  #1 kullanıcı {BASE + 1}')
+
+    def test_peer_ack_never_goes_back(self):
+        self.runner.on_status(1, 0, 9, fingerprint())
+        self.runner.on_status(1, 0, 4, fingerprint())
+        self.assertEqual(State.load().peer_applied, 9)
+
+    def test_clock_offset_recorded(self):
+        self.runner.on_status(int(time.time()) + 3600, 0, 0, fingerprint())
+        self.assertAlmostEqual(State.load().clock_offset, 3600, delta=2)
+
+    def test_port_errors_do_not_kill_the_loop(self):
+        class Broken:
+            def read(self):
+                raise OSError('port yok')
+
+            def write(self, packet):
+                raise OSError('port yok')
+
+        runner = Runner(Broken())
+        with self.assertLogs('sync', level='ERROR'):
+            runner.tick()
+            runner.tick()
+        self.assertIsNone(State.load().heard_at)
+
+    def test_schema_mismatch_is_reported_once(self):
+        with self.assertLogs('sync', level='WARNING') as logs:
+            self.runner.on_status(1, 0, 0, fingerprint() + 1)
+            self.runner.on_status(1, 0, 0, fingerprint() + 1)
+        self.assertEqual(len(logs.records), 1)
+        self.assertIn('uyumsuz', logs.records[0].getMessage())

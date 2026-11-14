@@ -38,6 +38,9 @@ def columns(table):
 
 
 def label(table):
+    """Türkçe tablo adı (durum sayfası, sync_run çıktısı); ▲/▼ oy modellerinde ad yok, hedefinden: "yorum oyu"."""
+    if vote := scored().get(table):
+        return f'{label(vote[1])} oyu'
     return str(table_models()[table]._meta.verbose_name)
 
 
