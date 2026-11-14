@@ -19,7 +19,7 @@ class Runner:
     def __init__(self, port, now=time.monotonic):
         self.now, self.saved_at = now, None
         self.link = Link(port, self, node=settings.SYNC['NODE'], key=settings.SYNC['KEY'].encode(), now=now)
-        self.schema_known = False  # bu süreçte karşıdan şeması tutan bir durum paketi geldi mi
+        self.schema_known = None  # bu süreçte karşının şeması: None bilinmiyor, True tutuyor, False tutmuyor
         self.waiting = None  # (karşı saat, karşının son sıra no): hepsi uygulanınca synced_until olur
 
     # Link'in beklediği host sözleşmesi
@@ -50,8 +50,12 @@ class Runner:
         return int(time.time()), last, fingerprint()
 
     def on_status(self, clock, last, applied, schema):
-        self.schema_known = schema == fingerprint()
-        if not self.schema_known:
+        known = schema == fingerprint()
+        if not known and self.schema_known is not False:  # her durum paketinde değil, bir kez
+            log.warning("Veritabanları uyumsuz (şema özeti tutmuyor): 1. bilgisayarın veritabanı 2.'ye kopyalanmalı; "
+                        "o zamana kadar gelen mesajlar uygulanmaz.")
+        self.schema_known = known
+        if not known:
             State.objects.filter(pk=1).update(schema_ok=False)
             return
         peer_applied = max(State.load().peer_applied, applied)  # toplu onay; geri gitmez

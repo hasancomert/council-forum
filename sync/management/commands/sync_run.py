@@ -25,11 +25,11 @@ class Command(BaseCommand):
         log.addHandler(handler)
         log.setLevel(logging.INFO)
         log.propagate = False
+        node = f"{settings.SYNC['NODE']}{' (hakem)' if is_arbiter() else ''}"
+        self.stdout.write(f"Düğüm {node}, hat {settings.SYNC['PORT']}. Durdurmak için Ctrl+C.")
         port = SerialPort(settings.SYNC['PORT'])
         port.ping()
         runner, online, modem = Runner(port), False, None
-        node = f"{settings.SYNC['NODE']}{' (hakem)' if is_arbiter() else ''}"
-        self.stdout.write(f"Düğüm {node}, hat {settings.SYNC['PORT']}. Durdurmak için Ctrl+C.")
         try:
             while True:
                 runner.tick()
@@ -38,8 +38,10 @@ class Command(BaseCommand):
                 if port.modem != modem:
                     modem = port.modem
                     log.info('Modem yanıt verdi (sürüm %s).', modem)
-                if runner.link.online != online:
-                    online = runner.link.online
+                heard = runner.link.heard  # arayüzle aynı tanım: son ONLINE_SECONDS'ta karşıdan paket duyuldu mu
+                up = heard is not None and time.monotonic() - heard < settings.SYNC['ONLINE_SECONDS']
+                if up != online:
+                    online = up
                     log.info('Bağlantı kuruldu.' if online else 'Bağlantı yok.')
         except KeyboardInterrupt:
             self.stdout.write('Durduruldu.')

@@ -2,6 +2,7 @@
 `host`'tan alır ve ona teslim eder (Runner ya da testteki sahte host). step() beklemez, uyumaz: döngü dışarıda.
 """
 import hmac
+import logging
 import random
 import struct
 import time
@@ -10,6 +11,8 @@ from collections import deque
 from django.conf import settings
 
 from .ports import airtime
+
+log = logging.getLogger(__name__)
 
 # Büyük uçlu. Her pakette ikinci bayt gönderen düğüm; sonunda HMAC-SHA256 etiketi (TAG bayt).
 DATA = struct.Struct('>cBIHH')  # 'D', düğüm, sıra no, parça, parça sayısı + parça
@@ -27,7 +30,7 @@ class Link:
         self.sent, self.used = deque(), 0.0  # son bir saatte gönderilenler: (zaman, yayın süresi)
         self.rx_seq, self.rx = None, []  # gelen yarım mesaj
         self.out, self.part, self.retry_at, self.misses = None, 0, 0.0, 0  # giden mesaj: (sıra no, parçalar)
-        self.status_at = 0.0
+        self.status_at, self.twin = 0.0, False
 
     def step(self):
         got = self.port.read()
@@ -54,8 +57,13 @@ class Link:
     def receive(self, rssi, snr, packet):
         body, tag = packet[:-self.cfg['TAG']], packet[-self.cfg['TAG']:]
         kind = KINDS.get(body[:1])
-        # başka grubun ya da yabancının paketi, kendi yankımız, kısa kalmış paket: yok sayılır
-        if not kind or len(body) < kind.size or body[1] == self.node or not hmac.compare_digest(tag, self.sign(body)):
+        if not kind or len(body) < kind.size or not hmac.compare_digest(tag, self.sign(body)):
+            return  # başka grubun ya da yabancının paketi, kısa kalmış paket: yok sayılır
+        if body[1] == self.node:  # imzası doğru ama bizim numaramızla: karşı da aynı SYNC_NODE'la çalışıyor
+            if not self.twin:
+                self.twin = True
+                log.warning('Karşıdan kendi düğüm numaramızla (%s) imzalı paket geldi: iki bilgisayarda SYNC_NODE '
+                            'aynı olmamalı.', self.node)
             return
         self.heard, self.rssi, self.snr, self.online = self.now(), rssi, snr, True
         letter, _, *fields = kind.unpack_from(body)
@@ -87,8 +95,8 @@ class Link:
         if self.out and self.out[0] == seq:
             self.part, self.retry_at, self.misses = expected, 0.0, 0
             if expected >= len(self.out[1]):
+                self.out = None  # önce: delivered() hata verirse mesaj yeniden gider, "uygulandı" onayıyla denenir
                 self.host.delivered(seq)
-                self.out = None
 
     def send(self):
         t, cfg = self.now(), self.cfg
@@ -98,7 +106,7 @@ class Link:
         if t >= self.status_at:  # mesaj sürerken de: alıcı şemayı her an öğrenebilsin
             clock, last, schema = self.host.status()
             self.write(STATUS.pack(b'S', self.node, clock, last, self.host.applied(), schema))
-            self.status_at = t + cfg['STATUS_SECONDS']
+            self.status_at = t + cfg['STATUS_SECONDS'] + self.rng() * cfg['JITTER']  # rastgele: telsizde kilitlenmesin
             return
         if self.out is None and (message := self.host.next_message()):
             seq, body = message
@@ -110,6 +118,7 @@ class Link:
             self.misses += 1
             if self.misses >= cfg['DOWN_AFTER']:  # art arda onaysız: bağlantı yok, daha seyrek dene
                 self.online = False
-                self.retry_at = t + cfg['DOWN_RETRY']
+                wait = cfg['DOWN_RETRY']
             else:
-                self.retry_at = t + cfg['ACK_TIMEOUT'][self.node] + self.rng() * cfg['JITTER']
+                wait = cfg['ACK_TIMEOUT'][self.node]
+            self.retry_at = t + wait + self.rng() * cfg['JITTER']  # rastgele: iki düğüm aynı anda denemesin

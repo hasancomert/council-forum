@@ -62,7 +62,7 @@ def write(table, rid, row):
         else:
             values = dict(zip(cols, row))
             if table == 'accounts_user':  # takma ad iki tarafta aynı anda alınmış: karşıdaki ekli adla yazılır
-                # Ek önce çıkarılır: karşıda ekli adla saklanan üye orada değişince ad geri gelir; evinde asıl adı kalsın.
+                # Ek önce çıkarılır: karşıda ekli adla saklanan üye orada değişince ad geri gelir; asıl ad kalsın.
                 values['username'] = name = values['username'].removesuffix(f'-{rid}')
                 cursor.execute('SELECT 1 FROM accounts_user WHERE username = %s AND id != %s', [name, rid])
                 if cursor.fetchone():

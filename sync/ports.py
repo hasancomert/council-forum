@@ -1,6 +1,7 @@
 """Hatlar: modemin seri portu (ya da sahte hat, socket://), testlerdeki bellek içi hat; SLIP çerçeveleme, yayın süresi.
 Üç hat aynı arayüzü sunar: write(paket), read() -> (RSSI, SNR, paket) ya da None.
 """
+import logging
 import math
 import random
 import struct
@@ -10,6 +11,7 @@ from collections import deque
 import serial
 from django.conf import settings
 
+log = logging.getLogger(__name__)
 END, ESC, ESC_END, ESC_ESC = b'\xc0', b'\xdb', b'\xdc', b'\xdd'
 
 
@@ -42,18 +44,24 @@ class SerialPort:
     saniyede bir yeniden açmayı dener (modem çekilse de forum ve eşitleyici çalışmaya devam eder).
     """
     def __init__(self, url):
-        self.url, self.serial, self.retry_at, self.modem = url, None, 0.0, None
+        self.url, self.serial, self.retry_at, self.modem, self.error = url, None, 0.0, None, None
         self.decoder, self.frames = SlipDecoder(), deque()
 
     def port(self):
         if self.serial is None and time.monotonic() >= self.retry_at:
             try:
                 self.serial = serial.serial_for_url(self.url, baudrate=115200, timeout=0.05)
-            except (OSError, serial.SerialException, ValueError):
+                self.error = None
+                log.info('Hat açıldı: %s', self.url)
+            except (OSError, serial.SerialException, ValueError) as e:
                 self.retry_at = time.monotonic() + settings.SYNC['DOWN_RETRY']
+                if str(e) != self.error:  # her denemede değil, hata değişince: yanlış port "karşı kapalı"dan ayrılsın
+                    self.error = str(e)
+                    log.warning('Hat açılamadı (%s): %s', self.url, e)
         return self.serial
 
-    def fail(self):
+    def fail(self, error):
+        log.warning('Hat koptu (%s): %s', self.url, error)
         try:
             self.serial.close()
         except (OSError, serial.SerialException):
@@ -64,8 +72,8 @@ class SerialPort:
         if self.port():
             try:
                 self.serial.write(slip_encode(packet))
-            except (OSError, serial.SerialException):
-                self.fail()
+            except (OSError, serial.SerialException) as e:
+                self.fail(e)
 
     def read(self):
         while not self.frames:
@@ -73,8 +81,8 @@ class SerialPort:
                 return None
             try:
                 data = self.serial.read(self.serial.in_waiting or 1)  # ilk baytı en çok 50 ms bekler
-            except (OSError, serial.SerialException):
-                self.fail()
+            except (OSError, serial.SerialException) as e:
+                self.fail(e)
                 return None
             if not data:
                 return None
