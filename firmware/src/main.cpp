@@ -42,11 +42,13 @@ void setup() {
     for (;;) {  // Ra-02 yanıt vermiyor (kablo, besleme): hızlı yanıp söner
       digitalToggle(LED);
       delay(100);
+      while (Serial.available()) Serial.read();  // USB'den geleni at: dolarsa bilgisayar yazmada takılır
     }
   }
   LoRa.setSpreadingFactor(LORA_SF);
   LoRa.setSignalBandwidth(LORA_BW);
   LoRa.setCodingRate4(LORA_CR);
+  LoRa.setPreambleLength(LORA_PREAMBLE);
   LoRa.enableCrc();
   LoRa.setSyncWord(LORA_SYNC);
   LoRa.setTxPower(LORA_POWER);
@@ -68,7 +70,7 @@ void loop() {
       else overflow = true;  // 255 bayttan uzun: sonraki END'e kadar atılır
     }
   }
-  if (LoRa.parsePacket() > 0) {  // CRC'si bozuk paketi kütüphane vermez
+  if (LoRa.parsePacket() > 0) {  // CRC'si bozuk paketi kütüphane vermez (CRC'yi gönderen açar; bizimkiler açık)
     Serial.write(END);
     put((int8_t)constrain(LoRa.packetRssi(), -128, 127));
     put((int8_t)lround(LoRa.packetSnr()));
