@@ -1,8 +1,15 @@
 """Eşitlemenin kendi tabloları: değişiklik günlüğü (tetikleyiciler yazar), tek satırlık durum, pk sayacı, gelen kaydı.
 Tablo adları sabit: tetikleyici SQL'i ve ham sorgular bu adları kullanır. Admin'e kaydedilmez, eşitlenmez.
 """
+import secrets
+
 from django.db import models
 from django.utils import timezone
+
+
+def new_db_id():
+    """Veritabanı kimliği: durum satırı ilk oluşunca (sync_init --reset de) üretilir, dosya kopyası taşır."""
+    return secrets.randbits(31)
 
 
 class Change(models.Model):
@@ -32,6 +39,7 @@ class State(models.Model):
     snr = models.SmallIntegerField(null=True)
     schema_ok = models.BooleanField(default=True)  # şema özetleri tutuyor mu
     airtime_ms = models.IntegerField(default=0)  # son bir saatte yayın süresi
+    db_id = models.IntegerField(default=new_db_id)  # şema özetine katılır: kopyalanmadan ayrı kurulan yakalansın
 
     class Meta:
         db_table = 'sync_state'

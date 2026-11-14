@@ -3,7 +3,7 @@ import random
 import time
 import zlib
 from collections import deque
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest import skipUnless
 
 from django.conf import settings
@@ -23,6 +23,7 @@ from voting.models import TopicCloseProposal, Vote
 from voting.tests import make_user
 
 from . import capture
+from .context import sync_status
 from .link import Link
 from .models import Change, Counter, Received, State
 from .ports import MemoryPort, SerialPort, SlipDecoder, airtime, slip_encode
@@ -92,6 +93,11 @@ class TablesTests(TestCase):
     def test_fingerprint_follows_content_types(self):
         before = fingerprint()
         ContentType.objects.create(app_label='x', model='y')
+        self.assertNotEqual(before, fingerprint())
+
+    def test_fingerprint_changes_with_database_identity(self):  # kopyalanmadan ayrı kurulmuş veritabanı yakalansın
+        before = fingerprint()
+        capture.reset()  # sync_init --reset yeni kimlik üretir: ayrı kurulmuş öbür bilgisayar gibi
         self.assertNotEqual(before, fingerprint())
 
     def test_digest_ignores_local_columns(self):
@@ -601,8 +607,8 @@ class RunnerTests(SyncTestCase):
         self.assertIsNone(State.load().synced_until)
         self.assertTrue(self.runner.deliver(2, self.peer_user(BASE + 2)))
         self.assertEqual(State.load().synced_until, when)
-        self.runner.on_status(1_900_000_000, 2, 0, fingerprint())
-        self.assertEqual(State.load().synced_until, when)  # geri gitmez
+        self.runner.on_status(1_900_000_000, 2, 0, fingerprint())  # karşının saati geri alındı
+        self.assertEqual(State.load().synced_until, datetime.fromtimestamp(1_900_000_000, UTC))  # eskisi güvenli değil
 
     def test_schema_mismatch_blocks_apply(self):
         incoming = self.peer_user(BASE + 1)  # bir kez: her çağrı aynı yerel üyeyi yeniden oluşturmaya çalışır
@@ -625,6 +631,11 @@ class RunnerTests(SyncTestCase):
         with self.assertLogs('sync', level='INFO') as logs:
             self.runner.deliver(1, incoming)
         self.assertEqual(logs.records[-1].getMessage(), f'gelen  #1 kullanıcı {BASE + 1}')
+
+    def test_peer_clock_set_back_withdraws_synced_until(self):  # karşı o saate kadar yeniden oy kabul eder
+        self.runner.on_status(2_000_000_000, 0, 0, fingerprint())
+        self.runner.on_status(1_900_000_000, 3, 0, fingerprint())  # saat geri alındı, yeni değişiklikler henüz gelmedi
+        self.assertIsNone(State.load().synced_until)
 
     def test_peer_ack_never_goes_back(self):
         self.runner.on_status(1, 0, 9, fingerprint())
@@ -655,3 +666,131 @@ class RunnerTests(SyncTestCase):
             self.runner.on_status(1, 0, 0, fingerprint() + 1)
         self.assertEqual(len(logs.records), 1)
         self.assertIn('uyumsuz', logs.records[0].getMessage())
+
+
+QUORUM2 = {**settings.FORUM, 'QUORUM_MIN': 2}
+
+
+@override_settings(FORUM=QUORUM2)
+class GateTests(SyncTestCase):
+    def ended(self, **changes):
+        ali, veli = make_user('ali'), make_user('veli')
+        self.topic = Topic.objects.create(title='Konu', author=ali)
+        proposal = TopicCloseProposal.objects.create(proposer=ali, topic=self.topic)
+        for voter in (ali, veli):
+            Vote.cast(proposal=proposal, voter=voter, choice='yes')
+        changes = {'voting_ends_at': timezone.now() - timedelta(seconds=10)} | changes
+        TopicCloseProposal.objects.filter(pk=proposal.pk).update(**changes)
+        proposal.refresh_from_db()
+        return proposal
+
+    def synced(self, proposal, seconds):
+        State.objects.filter(pk=1).update(synced_until=proposal.voting_ends_at + timedelta(seconds=seconds))
+
+    @override_settings(SYNC={**settings.SYNC, 'NODE': 0})
+    def test_disabled_sync_finalizes_as_before(self):
+        proposal = self.ended()
+        proposal.finalize()
+        self.assertEqual(proposal.status, 'applied')
+
+    @override_settings(SYNC=NODE2)
+    def test_follower_never_finalizes_or_applies(self):
+        proposal = self.ended()
+        proposal.finalize()
+        self.assertEqual(proposal.status, 'voting')
+        TopicCloseProposal.objects.filter(pk=proposal.pk).update(status='accepted')  # hakemden ara durum gelmiş gibi
+        proposal.refresh_from_db()
+        proposal.finalize()
+        self.topic.refresh_from_db()
+        self.assertEqual((proposal.status, self.topic.is_closed), ('accepted', False))
+
+    def test_arbiter_waits_for_peer(self):
+        proposal = self.ended()
+        proposal.finalize()
+        self.assertEqual(proposal.status, 'voting')  # karşıdan hiç durum gelmedi
+        self.synced(proposal, -3600)  # karşının saati bir saat geride: bitişi henüz geçmedi
+        proposal.finalize()
+        self.assertEqual(proposal.status, 'voting')
+        self.synced(proposal, 2)  # pay (3 sn) dolmadı
+        proposal.finalize()
+        self.assertEqual(proposal.status, 'voting')
+        self.synced(proposal, 3)
+        proposal.finalize()
+        self.topic.refresh_from_db()
+        self.assertEqual((proposal.status, self.topic.is_closed), ('applied', True))
+
+    @override_settings(SYNC=NODE2)
+    def test_hiding_ended_unfinalized_proposal_does_not_cancel(self):
+        proposal = self.ended()
+        proposal.set_hidden(True)
+        self.assertEqual((proposal.status, proposal.is_hidden), ('voting', True))
+
+    @override_settings(SYNC=NODE2)
+    def test_hiding_running_proposal_still_cancels(self):
+        proposal = self.ended(voting_ends_at=timezone.now() + timedelta(hours=1))
+        proposal.set_hidden(True)
+        self.assertEqual(proposal.status, 'cancelled')
+
+    @override_settings(SYNC=NODE2)
+    def test_detail_page_says_waiting(self):
+        proposal = self.ended()
+        self.client.force_login(User.objects.get(username='veli'))
+        response = self.client.get(proposal.get_absolute_url())
+        self.assertContains(response, 'sonuç iki forum eşitlenince açıklanacak')
+        self.assertNotContains(response, 'name="choice"')
+
+    def test_arbiter_runner_finalizes_due_proposals(self):
+        proposal = self.ended()
+        self.synced(proposal, 60)
+        clock = [0.0]
+        runner = Runner(MemoryPort.pair()[0], now=lambda: clock[0])
+        clock[0] = settings.SYNC['FINALIZE_SECONDS'] + 1
+        runner.tick()
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, 'applied')
+        self.assertTrue(Change.objects.filter(tbl='voting_topiccloseproposal', rid=proposal.pk,
+                                              data__contains='applied').exists())
+
+
+class UiTests(SyncTestCase):
+    @override_settings(SYNC={**settings.SYNC, 'NODE': 0})
+    def test_disabled_site_has_no_badge_and_no_pages(self):
+        self.assertNotContains(self.client.get('/'), 'LoRa')
+        self.assertEqual(self.client.get('/sync/').status_code, 404)
+        self.assertEqual(self.client.get('/sync/status.json').status_code, 404)
+        with self.assertNumQueries(0):
+            self.assertEqual(sync_status(None), {})
+
+    def test_badge_shows_link_state_and_pending(self):
+        make_user('ali')  # 2 bekleyen kayıt
+        response = self.client.get('/')
+        self.assertContains(response, 'LoRa: bağlantı yok')
+        self.assertContains(response, 'bekleyen 2')
+        State.objects.filter(pk=1).update(heard_at=timezone.now(), peer_applied=Change.objects.last().id)
+        response = self.client.get('/')
+        self.assertContains(response, 'LoRa: bağlı')
+        self.assertNotContains(response, 'bekleyen')
+
+    def test_status_json(self):
+        self.assertEqual(self.client.get('/sync/status.json').json(),
+                         {'node': 1, 'arbiter': True, 'online': False, 'pending': 0, 'applied': 0, 'schema_ok': True})
+
+    def test_status_page_warnings(self):
+        self.assertNotContains(self.client.get('/sync/'), 'Saat farkı')
+        State.objects.filter(pk=1).update(clock_offset=3600, schema_ok=False)
+        response = self.client.get('/sync/')
+        self.assertContains(response, 'Saat farkı')
+        self.assertContains(response, 'Veritabanları uyumsuz')
+
+    def test_status_page_lists_traffic_without_content(self):
+        ali = make_user('ali')
+        topic = Topic.objects.create(title='Bir', author=ali)
+        comment = Comment.objects.create(target=topic, author=ali, body='gizli-metin')
+        response = self.client.get('/sync/')
+        self.assertContains(response, 'Yorum')  # satır başında: Türkçe capfirst (CLAUDE.md, etiketler)
+        self.assertContains(response, f'#{comment.pk}')
+        self.assertContains(response, digest())
+        self.assertNotContains(response, 'gizli-metin')
+
+    def test_status_page_has_no_inline_style_or_script(self):
+        self.assertNotRegex(self.client.get('/sync/').content.decode(), r'style=|<style|<script>')

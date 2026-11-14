@@ -18,6 +18,8 @@
     {# bulunduğun sayfa aria-current ile işaretlenir (CSS vurgular); 404'te resolver_match yok, boş kalır #}
     {% with here=request.resolver_match.url_name %}
     <nav class="menu" aria-label="Ana menü">
+      {# LoRa rozeti yalnızca eşitleme açıkken (sync.context); site.js POLL_SECONDS'ta bir yeniler #}
+      {% if sync %}<a class="chip lora{% if not sync.online %} off{% endif %}" href="{% url 'sync_status' %}" data-sync="{% url 'sync_json' %}" data-poll="{{ sync_poll }}" data-applied="{{ sync.applied }}"{% if here == 'sync_status' %} aria-current="page"{% endif %}>LoRa: {% if sync.online %}bağlı{% else %}bağlantı yok{% endif %}{% if sync.pending %} · bekleyen {{ sync.pending }}{% endif %}</a>{% endif %}
       <a href="{% url 'proposals' %}"{% if here == 'proposals' %} aria-current="page"{% endif %}>Öneriler</a>
       {% if user.is_moderator %}<a href="{% url 'mod_queue' %}"{% if here == 'mod_queue' %} aria-current="page"{% endif %}>Şikayetler</a>{% endif %}
       {% if user.is_staff %}<a href="{% url 'admin:index' %}">Admin</a>{% endif %}

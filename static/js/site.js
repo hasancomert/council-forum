@@ -32,3 +32,26 @@ document.addEventListener('submit', async (event) => {
     buttons.forEach((b) => { b.disabled = false; });
   }
 });
+
+// LoRa rozeti (yalnızca eşitleme açıkken menüde): durum POLL_SECONDS'ta bir yenilenir. Karşıdan yeni içerik gelince
+// (applied, sayfa açıldığındakinden büyük) sayfanın üstünde "Yenile" şeridi çıkar; sayfa kendiliğinden yenilenmez,
+// yazılmakta olan yorum kaybolmasın.
+const lora = document.querySelector('a.lora');
+if (lora) {
+  setInterval(async () => {
+    try {
+      const s = await (await fetch(lora.dataset.sync)).json();
+      lora.textContent = `LoRa: ${s.online ? 'bağlı' : 'bağlantı yok'}${s.pending ? ` · bekleyen ${s.pending}` : ''}`;
+      lora.classList.toggle('off', !s.online);
+      if (s.applied > Number(lora.dataset.applied) && !document.querySelector('.fresh')) {
+        const link = Object.assign(document.createElement('a'), { href: '', textContent: 'Yenile' });
+        link.addEventListener('click', (event) => { event.preventDefault(); location.reload(); });
+        const notice = Object.assign(document.createElement('p'), { className: 'notice fresh' });
+        notice.append('Karşı taraftan yeni içerik geldi · ', link);
+        document.querySelector('main').prepend(notice);
+      }
+    } catch {
+      // sunucuya ulaşılamadı: bir sonraki turu bekle
+    }
+  }, Number(lora.dataset.poll) * 1000);
+}

@@ -135,6 +135,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'sync.context.sync_status',  # LoRa rozeti; eşitleme kapalıyken boş, sorgusuz
             ],
             'builtins': ['config.templatetags'],  # Türkçe capfirst ({% load %} gerekmez)
         },

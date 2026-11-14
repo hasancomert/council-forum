@@ -134,6 +134,8 @@ small, .muted { color: var(--muted); font-size: var(--fs-sm); }
 }
 .menu a:not(.button):hover, .menu button.link:hover, .menu a[aria-current] { background: var(--accent-soft); color: var(--accent); }
 .menu .button { min-height: var(--chip); margin-left: var(--s1); }
+.menu a.lora { border: 1px solid var(--ok); background: var(--ok-soft); color: var(--ok); }  /* LoRa: bağlı */
+.menu a.lora.off { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }  /* bağlantı yok */
 .menu .me { display: inline-block; max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: var(--chip); }
 
 /* Sayfa düzeni: panel geniş ekranda sağda, dar ekranda içerikten sonra. Panelsiz sayfada tek sütun. */
