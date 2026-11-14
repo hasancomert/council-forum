@@ -1,6 +1,8 @@
 import json
 import random
+import time
 import zlib
+from datetime import UTC, datetime
 from unittest import skipUnless
 
 from django.conf import settings
@@ -24,6 +26,7 @@ from .link import Link
 from .models import Change, Counter, Received, State
 from .ports import MemoryPort, SerialPort, SlipDecoder, airtime, slip_encode
 from .replay import apply, pack
+from .runner import Runner
 from .tables import columns, digest, fingerprint, label, scored, tables
 
 SQLITE = skipUnless(connection.vendor == 'sqlite', 'eşitleme yalnızca SQLite')
@@ -81,6 +84,9 @@ class TablesTests(TestCase):
         self.assertEqual(scored(), {'comments_commentvote': ('comment_id', 'comments_comment'),
                                     'topics_topicvote': ('topic_id', 'topics_topic')})
         self.assertEqual(label('comments_comment'), 'yorum')
+
+    def test_vote_labels_are_turkish(self):  # modelinde Türkçe ad yok: hedefinden türetilir
+        self.assertEqual((label('comments_commentvote'), label('topics_topicvote')), ('yorum oyu', 'konu oyu'))
 
     def test_fingerprint_follows_content_types(self):
         before = fingerprint()
@@ -484,3 +490,77 @@ class LinkTests(SimpleTestCase):
             self.assertLessEqual(la.airtime_used(), budget + airtime(255))
             self.run_for([la, lb], 3600 * 4, dt=0.5)  # bütçe saat saat açılır
             self.assertEqual(len(hb.got), 1)
+
+
+class RunnerTests(SyncTestCase):
+    def setUp(self):
+        super().setUp()
+        self.runner = Runner(MemoryPort.pair()[0])
+
+    def peer_user(self, rid):
+        make_user(f'u{rid}')
+        return message(Change.objects.filter(tbl='accounts_user').last(), rid=rid, username=f'uzak{rid}')
+
+    def test_outbox_follows_peer_applied(self):
+        self.assertIsNone(self.runner.next_message())
+        make_user('ali')
+        first = Change.objects.first()
+        self.assertEqual(self.runner.next_message(), (first.id, pack(first)))
+        self.runner.delivered(first.id)
+        self.assertEqual(self.runner.next_message()[0], first.id + 1)
+        self.assertEqual(State.load().peer_applied, first.id)
+
+    def test_status_sets_synced_until_only_after_everything_applied(self):
+        when = datetime.fromtimestamp(2_000_000_000, UTC)
+        self.runner.on_status(2_000_000_000, 2, 0, fingerprint())
+        self.assertIsNone(State.load().synced_until)
+        self.assertTrue(self.runner.deliver(1, self.peer_user(BASE + 1)))
+        self.assertIsNone(State.load().synced_until)
+        self.assertTrue(self.runner.deliver(2, self.peer_user(BASE + 2)))
+        self.assertEqual(State.load().synced_until, when)
+        self.runner.on_status(1_900_000_000, 2, 0, fingerprint())
+        self.assertEqual(State.load().synced_until, when)  # geri gitmez
+
+    def test_schema_mismatch_blocks_apply(self):
+        incoming = self.peer_user(BASE + 1)  # bir kez: her çağrı aynı yerel üyeyi yeniden oluşturmaya çalışır
+        self.runner.on_status(1, 0, 0, fingerprint() + 1)
+        self.assertFalse(State.load().schema_ok)
+        self.assertFalse(self.runner.deliver(1, incoming))
+        self.assertEqual(State.load().applied, 0)
+        self.runner.on_status(1, 0, 0, fingerprint())
+        self.assertTrue(State.load().schema_ok)
+        self.assertTrue(self.runner.deliver(1, incoming))
+
+    def test_nothing_applied_before_peer_schema_is_known(self):  # ilk durum paketi kaybolsa da
+        self.assertFalse(self.runner.deliver(1, self.peer_user(BASE + 1)))
+        self.assertEqual(State.load().applied, 0)
+
+    def test_terminal_line_for_incoming_message(self):
+        incoming = self.peer_user(BASE + 1)
+        self.runner.on_status(1, 0, 0, fingerprint())
+        with self.assertLogs('sync', level='INFO') as logs:
+            self.runner.deliver(1, incoming)
+        self.assertEqual(logs.records[-1].getMessage(), f'gelen  #1 kullanıcı {BASE + 1}')
+
+    def test_peer_ack_never_goes_back(self):
+        self.runner.on_status(1, 0, 9, fingerprint())
+        self.runner.on_status(1, 0, 4, fingerprint())
+        self.assertEqual(State.load().peer_applied, 9)
+
+    def test_clock_offset_recorded(self):
+        self.runner.on_status(int(time.time()) + 3600, 0, 0, fingerprint())
+        self.assertAlmostEqual(State.load().clock_offset, 3600, delta=2)
+
+    def test_port_errors_do_not_kill_the_loop(self):
+        class Broken:
+            def read(self):
+                raise OSError('port yok')
+
+            def write(self, packet):
+                raise OSError('port yok')
+
+        runner = Runner(Broken())
+        with self.assertLogs('sync', level='ERROR'):
+            runner.tick()
+            runner.tick()
+        self.assertIsNone(State.load().heard_at)
