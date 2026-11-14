@@ -95,6 +95,11 @@ class TablesTests(TestCase):
         ContentType.objects.create(app_label='x', model='y')
         self.assertNotEqual(before, fingerprint())
 
+    def test_fingerprint_changes_with_database_identity(self):  # kopyalanmadan ayrı kurulmuş veritabanı yakalansın
+        before = fingerprint()
+        capture.reset()  # sync_init --reset yeni kimlik üretir: ayrı kurulmuş öbür bilgisayar gibi
+        self.assertNotEqual(before, fingerprint())
+
     def test_digest_ignores_local_columns(self):
         user = make_user('ali')
         before = digest()
@@ -602,8 +607,8 @@ class RunnerTests(SyncTestCase):
         self.assertIsNone(State.load().synced_until)
         self.assertTrue(self.runner.deliver(2, self.peer_user(BASE + 2)))
         self.assertEqual(State.load().synced_until, when)
-        self.runner.on_status(1_900_000_000, 2, 0, fingerprint())
-        self.assertEqual(State.load().synced_until, when)  # geri gitmez
+        self.runner.on_status(1_900_000_000, 2, 0, fingerprint())  # karşının saati geri alındı
+        self.assertEqual(State.load().synced_until, datetime.fromtimestamp(1_900_000_000, UTC))  # eskisi güvenli değil
 
     def test_schema_mismatch_blocks_apply(self):
         incoming = self.peer_user(BASE + 1)  # bir kez: her çağrı aynı yerel üyeyi yeniden oluşturmaya çalışır
@@ -626,6 +631,11 @@ class RunnerTests(SyncTestCase):
         with self.assertLogs('sync', level='INFO') as logs:
             self.runner.deliver(1, incoming)
         self.assertEqual(logs.records[-1].getMessage(), f'gelen  #1 kullanıcı {BASE + 1}')
+
+    def test_peer_clock_set_back_withdraws_synced_until(self):  # karşı o saate kadar yeniden oy kabul eder
+        self.runner.on_status(2_000_000_000, 0, 0, fingerprint())
+        self.runner.on_status(1_900_000_000, 3, 0, fingerprint())  # saat geri alındı, yeni değişiklikler henüz gelmedi
+        self.assertIsNone(State.load().synced_until)
 
     def test_peer_ack_never_goes_back(self):
         self.runner.on_status(1, 0, 9, fingerprint())

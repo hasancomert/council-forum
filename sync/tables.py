@@ -9,6 +9,8 @@ from django.db import connection
 
 from comments.models import UpDownVote
 
+from .models import State
+
 APPS = ('accounts', 'topics', 'voting', 'comments', 'moderation')
 # Telsizden gitmeyen sütunlar: karşıda satır ilk kez oluşurken yazılan değer (ya da pk'den değer üreten fonksiyon).
 LOCAL = {
@@ -59,10 +61,12 @@ def quoted(names):
 
 
 def fingerprint():
-    """Şema özeti: tablolar, bütün sütunları ve ContentType kimlikleri iki tarafta aynı olmalı."""
+    """Şema özeti: tablolar, bütün sütunları, ContentType kimlikleri ve veritabanı kimliği iki tarafta aynı olmalı.
+    Kimlik sayesinde kopyalanmadan ayrı ayrı migrate edilmiş iki veritabanı da "uyumsuz" çıkar.
+    """
     schema = [[t, [f.column for f in table_models()[t]._meta.concrete_fields]] for t in tables()]
     types = list(ContentType.objects.order_by('id').values_list('id', 'app_label', 'model'))
-    return zlib.crc32(json.dumps([schema, types]).encode())
+    return zlib.crc32(json.dumps([schema, types, State.load().db_id]).encode())
 
 
 def digest():

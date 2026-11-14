@@ -6,7 +6,6 @@ from datetime import UTC, datetime, timedelta
 
 from django.conf import settings
 from django.core.management import call_command
-from django.db.models import Q
 from django.utils import timezone
 
 from .gate import is_arbiter
@@ -65,16 +64,18 @@ class Runner:
         peer_applied = max(State.load().peer_applied, applied)  # toplu onay; geri gitmez
         State.objects.filter(pk=1).update(schema_ok=True, peer_applied=peer_applied,
                                           clock_offset=clock - int(time.time()))
+        # Karşının saati geri alınmışsa eski an artık güvenli değil: karşı o saate kadar yeniden oy kabul eder.
+        State.objects.filter(pk=1, synced_until__gt=datetime.fromtimestamp(clock, UTC)).update(synced_until=None)
         self.waiting = (clock, last)
         self.check_synced()
 
     def check_synced(self):
-        """Karşı kendi saatiyle clock anına kadarki her değişikliğini bildirdi; hepsi uygulandıysa synced_until ilerler
-        (hakem kuralı karşının saatine bakar: iki bilgisayarın saat farkı sonucu bozmaz).
+        """Karşı kendi saatiyle clock anına kadarki her değişikliğini bildirdi; hepsi uygulandıysa synced_until o an
+        (hakem kuralı karşının saatine bakar: iki bilgisayarın saat farkı sonucu bozmaz). Karşının saati geri giderse
+        synced_until de geri gelir: bu yalnızca sonucu geciktirebilir, hiçbir zaman erkene çekmez.
         """
         if self.waiting and State.load().applied >= self.waiting[1]:
-            until = datetime.fromtimestamp(self.waiting[0], UTC)
-            State.objects.filter(Q(synced_until=None) | Q(synced_until__lt=until), pk=1).update(synced_until=until)
+            State.objects.filter(pk=1).update(synced_until=datetime.fromtimestamp(self.waiting[0], UTC))
             self.waiting = None
 
     def tick(self):
