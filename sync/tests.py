@@ -1,5 +1,7 @@
+import io
 import json
 import random
+import socket
 import time
 import zlib
 from collections import deque
@@ -25,6 +27,7 @@ from voting.tests import make_user
 from . import capture
 from .context import sync_status
 from .link import Link
+from .management.commands.sync_air import Command as AirCommand
 from .models import Change, Counter, Received, State
 from .ports import MemoryPort, SerialPort, SlipDecoder, airtime, slip_encode
 from .replay import apply, pack
@@ -381,6 +384,69 @@ class PortTests(SimpleTestCase):
             port.read()
         self.assertEqual(len(logs.records), 1)
         self.assertIn('COM_YOK_99', logs.records[0].getMessage())
+
+    def test_modem_is_polled_on_every_open(self):  # sonradan ya da yeniden takılan modem de "yanıt verdi" desin
+        server = socket.create_server(('127.0.0.1', 0))
+        port = SerialPort(f'socket://127.0.0.1:{server.getsockname()[1]}')
+        with self.assertLogs('sync', level='INFO'):  # Hat açıldı / koptu
+            for _ in range(2):
+                port.read()  # açar
+                conn = server.accept()[0]
+                conn.settimeout(2)
+                self.assertEqual(conn.recv(16), slip_encode(b'\x00'))
+                conn.sendall(slip_encode(b'\x01'))
+                for _ in range(40):
+                    if port.read() is None and port.modem:
+                        break
+                self.assertEqual(port.modem, 1)
+                conn.close()  # modem çekildi
+                port.read()
+                self.assertIsNone(port.modem)
+                port.retry_at = 0  # yeniden deneme zamanı geldi
+        server.close()
+
+    @override_settings(SYNC={**settings.SYNC, 'WRITE_TIMEOUT': 0.1})
+    def test_stalled_modem_does_not_block_writes(self):  # takılan modem okumazsa eşitleyici donmasın: hat koptu
+        server = socket.socket()
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)  # karşı hiç okumaz: arabellek çabuk dolsun
+        server.bind(('127.0.0.1', 0))
+        server.listen()
+        port = SerialPort(f'socket://127.0.0.1:{server.getsockname()[1]}')
+        with self.assertLogs('sync', level='WARNING') as logs:
+            self.assertEqual(port.port().write_timeout, 0.1)
+            for _ in range(20000):
+                port.write(bytes(200))
+                if port.serial is None:
+                    break
+        server.close()
+        self.assertIsNone(port.serial)
+        self.assertIn('Hat koptu', logs.output[-1])
+
+
+class AirTests(SimpleTestCase):
+    def test_half_open_node_gives_way_to_reconnect(self):  # kablosu çekilen düğümün bağlantısı kapanmadan kalır
+        air = AirCommand(stdout=io.StringIO())
+        air.listen('127.0.0.1', 0)
+        addr = air.server.getsockname()
+
+        def connect():
+            sock = socket.create_connection(addr)
+            sock.settimeout(2)
+            for _ in range(5):
+                air.step()
+            return sock
+
+        a, b = connect(), connect()
+        old_b = next(s for s in air.clients if s.getpeername() == b.getsockname())
+        a.sendall(slip_encode(b'\x00'))  # a konuşuyor; b'nin kablosu çekildi, eski bağlantısı kapanmadı
+        refused = connect()  # sessizlik ONLINE_SECONDS'ı aşmadan: en çok iki düğüm
+        self.assertEqual(refused.recv(16), b'')
+        air.clients[old_b][1] -= settings.SYNC['ONLINE_SECONDS'] + 1  # zaman geçti, eski b hâlâ sessiz
+        new_b = connect()
+        self.assertNotIn(old_b, air.clients)
+        self.assertEqual({s.getpeername() for s in air.clients}, {a.getsockname(), new_b.getsockname()})
+        for sock in (a, b, refused, new_b, air.server, *air.clients):
+            sock.close()
 
 
 class FakeHost:

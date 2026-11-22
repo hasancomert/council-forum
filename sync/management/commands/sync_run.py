@@ -28,7 +28,6 @@ class Command(BaseCommand):
         node = f"{settings.SYNC['NODE']}{' (hakem)' if is_arbiter() else ''}"
         self.stdout.write(f"Düğüm {node}, hat {settings.SYNC['PORT']}. Durdurmak için Ctrl+C.")
         port = SerialPort(settings.SYNC['PORT'])
-        port.ping()
         runner, online, modem = Runner(port), False, None
         try:
             while True:
@@ -36,8 +35,9 @@ class Command(BaseCommand):
                 if port.serial is None:
                     time.sleep(0.05)  # port yok: boşuna dönme (açıkken okuma 50 ms bekler)
                 if port.modem != modem:
-                    modem = port.modem
-                    log.info('Modem yanıt verdi (sürüm %s).', modem)
+                    modem = port.modem  # hat kopunca sıfırlanır: yeniden takılan modem için satır yine çıkar
+                    if modem is not None:
+                        log.info('Modem yanıt verdi (sürüm %s).', modem)
                 heard = runner.link.heard  # arayüzle aynı tanım: son ONLINE_SECONDS'ta karşıdan paket duyuldu mu
                 up = heard is not None and time.monotonic() - heard < settings.SYNC['ONLINE_SECONDS']
                 if up != online:
