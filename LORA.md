@@ -72,10 +72,13 @@ Her iki bilgisayarda projeyi aynı sürümle kopyalayın (`git clone` ya da klas
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-Copy-Item .env.example .env
 ```
 
-`.env`'in sonundaki satırları doldurun. 1. bilgisayar (hakem, oylamaları o sonuçlandırır):
+`Activate.ps1` "betik çalıştırma devre dışı" derse bir kez `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
+Proje kökünde `.env` dosyasını **yalnızca şu satırlarla** oluşturun. `.env.example`'ı kopyalamayın: dosyada aynı ad iki
+kez geçerse ilk satır geçerli olur, oradaki boş `SYNC_NODE=` gibi satırların altına eklenen değerler okunmaz ve eşitleme
+sessizce kapalı kalır. 1. bilgisayar (hakem, oylamaları o sonuçlandırır):
 
 ```ini
 DEBUG=1
@@ -139,7 +142,8 @@ python manage.py sync_run
 
 Her üye yalnızca kayıt olduğu bilgisayardan giriş yapar.
 
-1. **Kayıt.** 1. bilgisayarda "Kayıt ol" ile Ali, 2. bilgisayarda Veli kaydolur; hesap hemen açılır.
+1. **Kayıt.** 1. bilgisayarda önce kurucu hesabından çıkın (menüde "Çıkış"). "Kayıt ol" ile 1. bilgisayarda Ali,
+   2. bilgisayarda Veli kaydolur; hesap hemen açılır.
 2. **Öneri** (oylama yaklaşık 4 dakika sürdüğü için önce bu). 1. bilgisayarda Ali "Deneme" konusunu açar,
    "Diğer öneriler" → "Kapatma öner" → "Öneriyi aç", sonra "Evet". Birkaç saniye içinde öneri 2. bilgisayarın
    panelinde görünür; Veli de "Evet" der. Kimin ne oy verdiği görünmez, yalnızca katılım ("2/2 katılım").
@@ -148,7 +152,8 @@ Her üye yalnızca kayıt olduğu bilgisayardan giriş yapar.
    kaybolmasın diye). Ali yenileyip yorumu ▲'lar; puan 2. bilgisayarda da 1 olur.
 4. **Bağlantı kopması.** 2. bilgisayarın modemini çekin: yaklaşık 20 saniyede rozet "LoRa: bağlantı yok" olur. Veli bir
    yorum daha yazar, rozet "· bekleyen 1" gösterir. Modemi geri takın: `sync_run` "Hat açıldı", "Modem yanıt verdi" ve
-   "Bağlantı kuruldu." yazar, yorum 1. bilgisayara gider, rozet yeniden "LoRa: bağlı" olur.
+   "Bağlantı kuruldu." yazar, yorum 1. bilgisayara gider, rozet yeniden "LoRa: bağlı" olur. (kartla doğrulanacak; ağ
+   üzerinden `sync_air` ile denendi)
 5. **Sonuç.** Oylama bitince 2. bilgisayardaki öneri sayfası birkaç saniye "Oylama bitti; sonuç iki forum eşitlenince
    açıklanacak." der. Hakem sonuçlandırınca iki tarafta da "Sonuç: Uygulandı" ve konu kapalı görünür.
 6. **Eşitlik.** İki bilgisayarda http://127.0.0.1:8000/sync/ açılır: "İçerik özeti" iki tarafta aynıdır. Sayfada
@@ -161,7 +166,10 @@ Her üye yalnızca kayıt olduğu bilgisayardan giriş yapar.
   - "Hat açılamadı (COM5)": port adı yanlış ya da modem takılı değil. Komut: `[System.IO.Ports.SerialPort]::GetPortNames()`.
   - "Modem yanıt verdi" satırı yok: LED hızlı yanıp sönüyorsa Ra-02 kablolaması; LED hiç değişmiyorsa firmware
     yüklü değil (bölüm 2).
-  - "kendi düğüm numaramızla imzalı paket": iki bilgisayarda aynı `SYNC_NODE` var, biri 1 öbürü 2 olmalı.
+  - "Karşıdan kendi düğüm numaramızla (…) imzalı paket geldi": iki bilgisayarda aynı `SYNC_NODE` var, biri 1 öbürü 2
+    olmalı.
+  - Eşitleme hiç başlamıyorsa (`sync_run` "Eşitleme kapalı" diyor, menüde rozet yok): `.env`'de aynı ad iki kez olabilir,
+    ilk satır geçerlidir (bölüm 3).
   - `SYNC_KEY` iki tarafta farklıysa paketler sessizce yok sayılır.
   - Anten iki modemde de takılı mı?
 - **"Veritabanları uyumsuz"** (durum sayfası ve `sync_run`): 2. bilgisayardaki `db.sqlite3` 1.'nin kopyası değil ya da

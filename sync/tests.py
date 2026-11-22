@@ -387,6 +387,7 @@ class PortTests(SimpleTestCase):
 
     def test_modem_is_polled_on_every_open(self):  # sonradan ya da yeniden takılan modem de "yanıt verdi" desin
         server = socket.create_server(('127.0.0.1', 0))
+        server.settimeout(2)  # port açılamazsa test asılı kalmasın
         port = SerialPort(f'socket://127.0.0.1:{server.getsockname()[1]}')
         with self.assertLogs('sync', level='INFO'):  # Hat açıldı / koptu
             for _ in range(2):
@@ -413,7 +414,7 @@ class PortTests(SimpleTestCase):
         server.listen()
         port = SerialPort(f'socket://127.0.0.1:{server.getsockname()[1]}')
         with self.assertLogs('sync', level='WARNING') as logs:
-            self.assertEqual(port.port().write_timeout, 0.1)
+            self.assertAlmostEqual(port.port().write_timeout, 0.1 + airtime(255))  # SF büyürse kendiliğinden uzar
             for _ in range(20000):
                 port.write(bytes(200))
                 if port.serial is None:

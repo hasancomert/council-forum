@@ -61,19 +61,20 @@ class Command(BaseCommand):
         conn, addr = self.server.accept()
         if len(self.clients) == 2:  # en çok iki düğüm
             # Kablosu çekilen düğümün bağlantısı kapanış gelmeden yarı açık kalır: uzun süredir susan, yeniden
-            # bağlanana yer açar (canlı düğüm durum paketleriyle hiç ONLINE_SECONDS susmaz).
+            # bağlanana yer açar (canlı düğüm durum paketleri yüzünden normalde bu kadar susmaz).
             quiet = min(self.clients, key=lambda s: self.clients[s][1])
             if now - self.clients[quiet][1] <= settings.SYNC['ONLINE_SECONDS']:
                 conn.close()
+                self.stdout.write(f'Reddedildi (en çok iki düğüm): {addr[0]}:{addr[1]}')
                 return
-            self.drop(quiet)
+            self.drop(quiet, 'Uzun süredir susan düğüm çıkarıldı (yarı açık bağlantı).')
         self.clients[conn] = [SlipDecoder(), now]
         self.stdout.write(f'Bağlandı: {addr[0]}:{addr[1]}')
 
-    def drop(self, sock):
+    def drop(self, sock, note='Bir düğüm ayrıldı.'):
         del self.clients[sock]
         sock.close()
-        self.stdout.write('Bir düğüm ayrıldı.')
+        self.stdout.write(note)
 
     def receive(self, sock, now):
         try:

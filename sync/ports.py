@@ -42,8 +42,8 @@ class SerialPort:
     """Modem (Black Pill + Ra-02) ya da sahte hat. Giden çerçeve = paket; gelen = [RSSI int8][SNR int8] + paket.
     1 baytlık giden çerçeve yoklamadır (havaya verilmez), modem 1 baytlık sürümle yanıtlar; port her açılışta yoklanır
     (sonradan ya da yeniden takılan modem de yanıtlasın). Port hatasında istisna atmaz: kapanır, DOWN_RETRY saniyede
-    bir yeniden açmayı dener (modem çekilse de forum ve eşitleyici çalışır). WRITE_TIMEOUT boyunca okumayan (takılan)
-    modem de koptu sayılır.
+    bir yeniden açmayı dener (modem çekilse de forum ve eşitleyici çalışır). En uzun paketin yayın süresi +
+    WRITE_TIMEOUT boyunca okumayan (takılan) modem de koptu sayılır.
     """
     def __init__(self, url):
         self.url, self.serial, self.retry_at, self.modem, self.error = url, None, 0.0, None, None
@@ -53,7 +53,7 @@ class SerialPort:
         if self.serial is None and time.monotonic() >= self.retry_at:
             try:
                 self.serial = serial.serial_for_url(self.url, baudrate=115200, timeout=0.05,
-                                                    write_timeout=settings.SYNC['WRITE_TIMEOUT'])
+                                                    write_timeout=settings.SYNC['WRITE_TIMEOUT'] + airtime(255))
             except (OSError, serial.SerialException, ValueError) as e:
                 self.retry_at = time.monotonic() + settings.SYNC['DOWN_RETRY']
                 if str(e) != self.error:  # her denemede değil, hata değişince: yanlış port "karşı kapalı"dan ayrılsın
@@ -71,7 +71,8 @@ class SerialPort:
             self.serial.close()
         except (OSError, serial.SerialException):
             pass
-        self.serial, self.modem, self.decoder = None, None, SlipDecoder()  # yarım çerçeve yeni bağlantıya karışmasın
+        self.serial, self.modem, self.decoder = None, None, SlipDecoder()  # eski bağlantının çerçeveleri karışmasın
+        self.frames.clear()
         self.retry_at = time.monotonic() + settings.SYNC['DOWN_RETRY']
 
     def write(self, packet):
