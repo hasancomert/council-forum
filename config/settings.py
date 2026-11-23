@@ -157,6 +157,7 @@ SYNC = {
     'JITTER': 0.5,  # yeniden göndermeye eklenen rastgele süre üst sınırı (sn)
     'DOWN_AFTER': 5,  # art arda bu kadar onaysız denemeden sonra "bağlantı yok"
     'DOWN_RETRY': 5,  # bağlantı yokken deneme aralığı (sn)
+    'WRITE_TIMEOUT': 2,  # en uzun paketin yayın süresi + bu kadar sn okumayan (takılan) modem koptu sayılır
     'GUARD': 0.1,  # son duyulan paketten sonra konuşmadan önce bekleme (sn)
     'STATUS_SECONDS': 5,  # durum paketi aralığı
     'ONLINE_SECONDS': 20,  # bu kadar süre paket duyulmazsa arayüzde "bağlantı yok"
